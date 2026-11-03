@@ -87,4 +87,9 @@ def run(day: date, log=print) -> bool:
     with RUN_LOG.open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
     log(f"forward run {day}: data {'OK' if rec['data_ok'] else 'FAILED'}, llm {'OK' if rec['llm_ok'] else 'FAILED'}")
+    if not rec["ok"]:
+        from trader.monitor.alerts import notify
+
+        notify("error", f"[forward] {day}: data {'OK' if rec['data_ok'] else 'FAILED'}, llm {'OK' if rec['llm_ok'] else 'FAILED'}: "
+               f"{rec.get('data_error') or rec.get('llm_error')}"[:300])
     return rec["ok"]

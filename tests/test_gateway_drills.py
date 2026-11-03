@@ -203,3 +203,4 @@ def test_benchmark_fallback_may_be_fully_invested_over_two_days():
     plan = gateway.plan_orders({"SPY": 1.0}, Account(1000, 1000, 1000, 1000), {}, ETFS, lim, 0, 0.0, False)
     assert not any("clipped" in n for n in plan.notes)  # D19: SPY is not clipped to the 35% ETF cap
     assert sum(o.notional for o in plan.orders) == pytest.approx(600)  # day 1 limited by 60% turnover
+    assert not plan.refused and plan.deferred  # throttling is deferred (log only), not a refusal alert

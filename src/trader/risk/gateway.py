@@ -36,7 +36,8 @@ class PlannedOrder:
 @dataclass
 class Plan:
     orders: list[PlannedOrder] = field(default_factory=list)
-    refused: list[tuple[str, str]] = field(default_factory=list)  # (symbol, reason) -> alert
+    refused: list[tuple[str, str]] = field(default_factory=list)  # (symbol, reason) -> push alert
+    deferred: list[tuple[str, str]] = field(default_factory=list)  # expected throttling (turnover/count) -> log only
     notes: list[str] = field(default_factory=list)
 
 
@@ -135,7 +136,7 @@ def plan_orders(target: dict[str, float], acct: Account, pos: dict[str, Position
     for x in sells + buys:
         notional = x.notional if x.notional is not None else pos[x.symbol].market_value
         if len(plan.orders) >= run_cap or orders_today + len(plan.orders) >= day_cap:
-            plan.refused.append((x.symbol, "order-count limit reached"))
+            plan.deferred.append((x.symbol, "order-count limit reached"))
             continue
         room = turnover_cap - used
         if x.side == "buy":
@@ -146,8 +147,10 @@ def plan_orders(target: dict[str, float], acct: Account, pos: dict[str, Position
                 plan.notes.append(f"{x.symbol}: order shrunk from {notional:.2f} to {room:.2f} (turnover/buying power)")
                 x.notional = notional = room
             else:
-                why = "insufficient buying power" if x.side == "buy" and bp < turnover_cap - used else f"daily turnover limit ({o['max_daily_turnover']:.0%}) reached"
-                plan.refused.append((x.symbol, why))
+                if x.side == "buy" and bp < turnover_cap - used:
+                    plan.refused.append((x.symbol, "insufficient buying power"))
+                else:
+                    plan.deferred.append((x.symbol, f"daily turnover limit ({o['max_daily_turnover']:.0%}) reached"))
                 continue
         if x.side == "buy":
             bp -= notional
@@ -167,6 +170,7 @@ class RunResult:
     status: str
     submitted: int = 0
     refused: list[tuple[str, str]] = field(default_factory=list)
+    deferred: list[tuple[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -251,8 +255,10 @@ def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str
         (since,),
     ).fetchone()
     plan = plan_orders(target, acct, pos, etfs, lim, int(row[0]), float(row[1]), sells_only, plan)
-    for sym, why in plan.refused:
+    for sym, why in dict.fromkeys(plan.refused):  # one alert per (symbol, reason)
         _alert(con, "warning", "order_refused", f"{sym}: {why}")
+    for sym, why in dict.fromkeys(plan.deferred):
+        state.event(con, "info", "order_deferred", f"{sym}: {why}")
 
     submitted, unknown = 0, 0
     for po in plan.orders:
@@ -282,7 +288,7 @@ def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str
     con.execute("UPDATE runs SET status=?, detail=? WHERE run_id=?",
                 (status, f"{len(plan.orders)} orders, {len(plan.refused)} refused, {unknown} unconfirmed", run_id))
     con.commit()
-    return RunResult(status, submitted, plan.refused, plan.notes)
+    return RunResult(status, submitted, refused=plan.refused, deferred=plan.deferred, notes=plan.notes)
 
 
 def kill(broker: Broker, con: sqlite3.Connection) -> int:

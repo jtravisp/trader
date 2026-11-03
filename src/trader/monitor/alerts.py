@@ -1,4 +1,5 @@
-"""Alerts: always appended to live/logs/alerts.log; pushed to ntfy.sh when NTFY_TOPIC is set."""
+"""Alerts: always appended to live/logs/alerts.log; pushed to ntfy.sh when NTFY_TOPIC is set
+(authenticated with NTFY_TOKEN when present)."""
 
 from __future__ import annotations
 
@@ -20,8 +21,19 @@ def notify(level: str, message: str) -> None:
     topic = secret("NTFY_TOPIC", required=False)
     if not topic or level == "info":
         return
+    send(f"trader {level}", message, PRIORITY.get(level, "3"))
+
+
+def send(title: str, message: str, priority: str = "3") -> int | None:
+    """Push to ntfy. Returns the HTTP status, or None on network failure (never raises)."""
+    topic = secret("NTFY_TOPIC", required=False)
+    if not topic:
+        return None
+    headers = {"Title": title, "Priority": priority}
+    token = secret("NTFY_TOKEN", required=False)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
-        httpx.post(f"https://ntfy.sh/{topic}", content=message.encode(), timeout=10,
-                   headers={"Title": f"trader {level}", "Priority": PRIORITY.get(level, "3")})
+        return httpx.post(f"https://ntfy.sh/{topic}", content=message.encode(), timeout=10, headers=headers).status_code
     except httpx.HTTPError:
-        pass  # alerting must never break trading; the local log has it
+        return None  # alerting must never break trading; the local log has it

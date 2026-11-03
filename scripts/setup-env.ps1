@@ -17,7 +17,7 @@ foreach ($line in Get-Content $envPath) {
   if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') { $vals[$Matches[1]] = $Matches[2].Trim().Trim('"') }
 }
 $required = 'ALPACA_DATA_KEY','ALPACA_DATA_SECRET','ALPACA_TRADE_KEY','ALPACA_TRADE_SECRET','ALPACA_TRADE_PAPER','TRADER_ANTHROPIC_API_KEY','SEC_USER_AGENT','FRED_API_KEY'
-$optional = 'MASSIVE_API_KEY','NTFY_TOPIC'
+$optional = 'MASSIVE_API_KEY','MASSIVE_S3','NTFY_TOPIC','NTFY_TOKEN'
 $missing = 0
 foreach ($k in $required + $optional) {
   $set = [bool]$vals[$k]

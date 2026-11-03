@@ -228,7 +228,7 @@ def live_execute(run_id: str = typer.Option("", help="default: latest pending ru
             log(f"marked {n} older pending target(s) superseded")
     allow = set(etf_list()) | set(load_seed()["symbol"].to_list())
     res = gateway.run(run_id, _broker(), con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit)
-    log(f"gateway {run_id}: {res.status}, submitted {res.submitted}, refused {len(res.refused)}")
+    log(f"gateway {run_id}: {res.status}, submitted {res.submitted}, refused {len(res.refused)}, deferred {len(res.deferred)}")
     for n in res.notes:
         log(f"  note: {n}")
     for s, why in res.refused:
@@ -241,6 +241,16 @@ def live_report(day: str = typer.Option(None, help="New York date; default today
     from trader.monitor import daily
 
     daily.build(_d(day) or datetime.now(NY).date(), _broker(), log=log)
+
+
+@gw_app.command("test-alert")
+def live_test_alert() -> None:
+    """Send a test push notification through ntfy."""
+    from trader.monitor.alerts import send
+
+    code = send("trader test", "Test alert from the trader system. If you see this, phone alerts work.", "3")
+    log(f"ntfy: {'not configured' if code is None else f'HTTP {code}'}")
+    raise typer.Exit(0 if code == 200 else 1)
 
 
 @gw_app.command("kill")

@@ -96,5 +96,10 @@ def build(d: date, broker, log=print) -> str:
            "halts": [h["kind"] for h in halts]}
     with (REPORTS / "daily.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
+    from trader.monitor.alerts import send
+
+    te = f", TE {(day_ret - replay) * 1e4:+.0f}bp" if replay is not None else ""
+    send(f"trader daily {d}", f"Equity ${acct.equity:,.2f} ({day_ret:+.2%}) vs SPY {spy_ret:+.2%}{te}; "
+         f"{len(fills)} fills; halts: {', '.join(h['kind'] for h in halts) or 'none'}", "2")
     log(f"report: {path}")
     return str(path)

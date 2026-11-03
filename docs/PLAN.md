@@ -135,8 +135,10 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - Risk gateway (`src/trader/risk/`, the only order path): target validation (a corrupt target is refused whole), caps (35% ETF, 10% stock, SPY up to 100% per D19), chunked orders (D18), turnover/order-count/buying-power limits, trading window, daily-loss (auto-resume) and peak-drawdown (human) halts, write-ahead order log, reconciliation, idempotent client order ids, kill / unkill / flatten.
 - Drills pass as tests: crash mid-run and restart with no duplicates, a lost order resubmitted once, corrupted targets, limit breach and halt, kill switch, unknown broker order → halt (`tests/test_gateway_drills.py`).
 - Live runner (D16 in-memory history) currently trades FALLBACK = 100% SPY (D19). Daily report with slippage vs open and replay tracking error: `trader live report`.
-- Scheduling: `scripts/register-tasks.ps1` (evening forward + report + target; weekday 08:40 CT gateway on paper). **User to re-run it** (it replaces the earlier single-task script).
-- Alerts: local log always; ntfy push once `NTFY_TOPIC` is set.
+- Scheduling: `scripts/register-tasks.ps1` registered 2026-11-03 (evening forward + report + target at 18:00 CT; weekday 08:40 CT gateway on paper).
+- Paper account reset to **$200** (matches D10). One key pair serves data + paper trading; verified 401 on the live endpoint.
+- Alerts: ntfy push working (`trader live test-alert`). Refusals/halts/failures push; turnover deferrals are log-only; a low-priority daily summary pushes after the evening report.
+- First paper orders: 2026-11-04 09:40 ET, FALLBACK builds 60% SPY on day 1 (5 x $24 chunks), the rest on day 2.
 
 ## P5 — ML ranker (weeks 5–9)
 - Train LightGBM on 5-day forward return rank across the universe, using price, event, fundamental, and regime features.
