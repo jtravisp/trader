@@ -22,6 +22,7 @@ class Panel:
     dollar_volume: np.ndarray  # T x N raw close * volume
     is_etf: np.ndarray  # N bool
     meta: dict = field(default_factory=dict)
+    pit_rank: np.ndarray | None = None  # T x N point-in-time liquidity rank (inf = not a member)
 
     @property
     def T(self) -> int:
@@ -35,7 +36,8 @@ class Panel:
         """Rows 0..t inclusive: everything knowable at the close of day t."""
         s = slice(0, t + 1)
         return Panel(self.dates[s], self.symbols, self.open[s], self.close[s], self.raw_close[s],
-                     self.dollar_volume[s], self.is_etf, self.meta)
+                     self.dollar_volume[s], self.is_etf, self.meta,
+                     None if self.pit_rank is None else self.pit_rank[s])
 
     def col(self, symbol: str) -> int:
         return self.symbols.index(symbol)

@@ -22,14 +22,19 @@ class Trial:
     summary: dict
 
 
-_PANEL: Panel | None = None
+_PANELS: dict[str, Panel] = {}
 
 
-def panel() -> Panel:
-    global _PANEL
-    if _PANEL is None:
-        _PANEL = load_panel()
-    return _PANEL
+def panel(universe: str = "seed") -> Panel:
+    """'seed' = survivorship-biased D14 seed (P2 sanity); 'pit' = point-in-time universe (P3, D20/D21)."""
+    if universe not in _PANELS:
+        if universe == "pit":
+            from trader.universe.pit import load_pit_panel
+
+            _PANELS[universe] = load_pit_panel()
+        else:
+            _PANELS[universe] = load_panel()
+    return _PANELS[universe]
 
 
 def spy_returns(p: Panel) -> np.ndarray:
@@ -38,8 +43,9 @@ def spy_returns(p: Panel) -> np.ndarray:
 
 
 def run_one(strategy_id: str, params: dict, cost_mult: float = 1.0, delay: int = 0, constraints: str = "limits",
-            p: Panel | None = None, leak: tuple[bool, str] | None = None, notes: str = "", family: str | None = None) -> Trial:
-    p = p or panel()
+            p: Panel | None = None, leak: tuple[bool, str] | None = None, notes: str = "", family: str | None = None,
+            universe: str = "seed") -> Trial:
+    p = p or panel(universe)
     strat = REGISTRY[strategy_id](**params)
     if leak is None:
         leak = engine.truncation_leak_check(strat, p)
@@ -53,7 +59,8 @@ def run_one(strategy_id: str, params: dict, cost_mult: float = 1.0, delay: int =
     summ["clipped_days"], summ["stale_exits"] = res.clipped_days, res.stale_exits
     status = "ok" if leak[0] else "leak_detected"
     tid = registry.record(
-        family=family or strat.family, strategy_id=strategy_id, params={**params, "constraints": constraints},
+        family=family or strat.family, strategy_id=strategy_id,
+        params={**params, "constraints": constraints, **({"universe": "pit"} if (p.pit_rank is not None and strat.stock_universe) else {})},
         cost_mult=cost_mult, delay=delay, data_start=str(p.dates[start]), data_end=str(p.dates[-1]),
         leak_check=leak[1], status=status, metrics=summ, dates=p.dates[sl], net=res.net[sl],
         sharpe_daily=stats.sharpe(res.net[sl]), notes=notes,
@@ -61,9 +68,10 @@ def run_one(strategy_id: str, params: dict, cost_mult: float = 1.0, delay: int =
     return Trial(tid, cost_mult, delay, res, summ)
 
 
-def full_experiment(strategy_id: str, params: dict, constraints: str = "limits", notes: str = "", log=print) -> str:
+def full_experiment(strategy_id: str, params: dict, constraints: str = "limits", notes: str = "", log=print,
+                    universe: str = "seed") -> str:
     """Base costs, 2x costs and a 1-day-delay check; all registered. Returns the report path."""
-    p = panel()
+    p = panel(universe)
     strat = REGISTRY[strategy_id](**params)
     leak = engine.truncation_leak_check(strat, p)
     log(f"{strategy_id} {params}: leak check {leak[1]}")
@@ -127,7 +135,9 @@ def write_report(strategy_id: str, params: dict, base: Trial, x2: Trial, dly: Tr
         "Sharpe > 0 at 2x costs": x2.summary["sharpe"] > 0,
         ">= 2 of 3 subperiods positive": sum(sp["cagr"] > 0 for sp in metrics.subperiods(base.result.net[start:], p.dates[start:])) >= 2,
     }
-    if REGISTRY[strategy_id].stock_universe:
+    if REGISTRY[strategy_id].stock_universe and p.pit_rank is not None:
+        L += ["", "Universe: point-in-time top-N from Massive month-end listings (D20, D21), delisted names included."]
+    elif REGISTRY[strategy_id].stock_universe:
         L += ["", "Universe: liquid top-500 inside the survivorship-biased seed (D14). **Until the P3 point-in-time "
               "universe exists, no result here counts as gate evidence.**"]
     else:

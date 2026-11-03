@@ -70,6 +70,8 @@ Forward collection (LLM scores, paper fills) starts early. Elapsed time is the b
 - [x] Forward job (`trader forward`): data + LLM scoring work (`score-smoke` passes, ~$0.00008/item via batch). Scheduled daily at 18:00 CT (`trader-forward` task). Gate clock started 2026-11-03.
 - Gate 1 (SPY within 0.5%/yr): **PASS** for 2017–2024. 2016 can't be checked (no 2015 base bar).
 
+**Follow-up once a strategy passes P3 (noted 2026-11-03):** decide intraday protection. The live system acts once a day (decide after the close, trade at 09:40 ET), so nothing reacts to an intraday crash until the next run. Backtest the passing strategy with and without (a) protective stop orders resting at Alpaca (these work even when the host is down) and (b) a midday reduce-only gateway check. Adopt either only if it improves risk-adjusted results net of costs and whipsaw.
+
 **Carried into P3 from P1:**
 - Rebuild split/dividend adjustment factors from raw bars + Massive corporate actions, then diff against Alpaca's `adjustment=all` for every name. Alpaca double-counts dividends on reused tickers (DOC), and its spin-off handling is suspect (BDX).
 - Build the point-in-time universe with the delisted-ticker list. Alpaca already serves most delisted names' bars, so the Massive month mainly buys the list and the corporate actions.

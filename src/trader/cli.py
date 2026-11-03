@@ -124,6 +124,14 @@ def survivorship() -> None:
     sv.run(log=log)
 
 
+@app.command("build-universe")
+def build_universe(fetch: bool = typer.Option(True, help="fetch Alpaca bars for symbols missing from the lake")) -> None:
+    """P3: point-in-time universe from Massive listings (+ Alpaca bars for delisted names)."""
+    from trader.universe import pit
+
+    pit.build(log=log, fetch=fetch)
+
+
 @app.command()
 def gate() -> None:
     """P1 gate: SPY total return vs published figures."""
@@ -158,6 +166,7 @@ def backtest(
     strategy: str = typer.Option(..., help="Strategy ID declared in docs/STRATEGIES.md"),
     params: str = typer.Option("{}", help="JSON parameters"),
     constraints: str = typer.Option("limits", help="limits | none"),
+    universe: str = typer.Option("pit", help="pit (P3 point-in-time) | seed (biased D14 seed)"),
     notes: str = typer.Option(""),
 ) -> None:
     """Run + register base, 2x-cost and +1-day-delay backtests; write a report."""
@@ -165,7 +174,7 @@ def backtest(
 
     from trader.research import runner
 
-    runner.full_experiment(strategy, json.loads(params), constraints=constraints, notes=notes, log=log)
+    runner.full_experiment(strategy, json.loads(params), constraints=constraints, notes=notes, log=log, universe=universe)
 
 
 @app.command()

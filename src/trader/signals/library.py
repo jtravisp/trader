@@ -78,6 +78,22 @@ class Momentum(Strategy):
         return only_on(schedule(panel, "monthly"), top_k_equal_weight(score, uni, k))
 
 
+class ShortTermReversal(Strategy):
+    """S02: weekly, buy the worst `lookback`-session performers of the liquid top-500 (see STRATEGIES.md)."""
+
+    id, family = "S02", "S02"
+
+    def targets(self, panel: Panel) -> np.ndarray:
+        lb = int(self.params.get("lookback", 5))
+        n = int(self.params.get("n", 500))
+        frac = {"decile": 0.10, "quintile": 0.20}[self.params.get("bucket", "decile")]
+        c = panel.close
+        ret = np.full_like(c, np.nan)
+        ret[lb:] = c[lb:] / c[:-lb] - 1
+        uni = liquid_universe(panel, n=n)
+        return only_on(schedule(panel, "weekly"), top_k_equal_weight(-ret, uni, int(n * frac)))
+
+
 class EtfTrend(Strategy):
     """S01: time-series momentum on the ETF list with portfolio vol targeting (see STRATEGIES.md)."""
 
@@ -100,6 +116,7 @@ class EtfTrend(Strategy):
 
 REGISTRY: dict[str, type[Strategy]] = {
     "S01": EtfTrend,
+    "S02": ShortTermReversal,
     "SAN01": BuyHold,
     "SAN02": RandomPicks,
     "SAN02-EW": EqualWeightUniverse,

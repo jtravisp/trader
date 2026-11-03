@@ -77,6 +77,10 @@ def liquid_universe(panel: Panel, n: int = 500, window: int = 60, min_price: flo
 
 
 def _liquid_universe(panel: Panel, n: int, window: int, min_price: float, stocks_only: bool) -> np.ndarray:
+    if panel.pit_rank is not None:
+        # point-in-time membership from Massive listings (P3): rank from the latest month-end
+        # snapshot <= t, still requiring a tradable close today
+        return (panel.pit_rank <= n) & np.isfinite(panel.close) & ~panel.is_etf[None, :]
     dv = rolling_median(np.where(np.isfinite(panel.dollar_volume), panel.dollar_volume, np.nan), window, int(window * 0.8))
     ok = np.isfinite(dv) & (np.nan_to_num(panel.raw_close) >= min_price) & np.isfinite(panel.close)
     if stocks_only:
