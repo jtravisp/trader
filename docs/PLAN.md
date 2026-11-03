@@ -89,6 +89,10 @@ Forward collection (LLM scores, paper fills) starts early. Elapsed time is the b
 
 **Gate:** all sanity tests pass, and the leak test fails as it should.
 
+**Status (2026-11-03): gate PASSED.**
+- Built: engine (next-open fills, delay option, gateway caps + min drift), cost model (bps/side + SEC fee, base and 2×), vol-target sizing, metrics, PSR/DSR, PBO (CSCV), stationary bootstrap, CPCV splitter (purge + embargo), SQLite registry with per-trial returns, markdown + PNG reports, a truncation leak check on every run, and `trader backtest` / `trader sanity`.
+- Sanity: SAN01 exact, SAN02 IR −0.05 ± 0.03, SAN03 leak caught, 12-1 momentum positive (inflated by the biased seed). See `experiments/reports/P2_sanity.md`.
+
 ## P3 — Rule baselines (weeks 3–5)
 Use the `run-experiment` skill for every trial. Candidates:
 1. ETF trend + vol targeting
@@ -97,6 +101,10 @@ Use the `run-experiment` skill for every trial. Candidates:
 4. Earnings drift from EDGAR 8-K 2.02 plus the announcement-day reaction
 
 Keep the parameter grids small and pre-declared in `docs/STRATEGIES.md` before running.
+
+**Status (2026-11-03):**
+- S01 (ETF trend): **failed** the gate (DSR 0.94, PBO 0.86, Sharpe below SPY). Not a paper-trading candidate as a standalone edge.
+- S02–S04 (stocks): **waiting for the point-in-time universe.** That needs the one-month Massive Starter purchase (D3, $29): the delisted-ticker list and corporate actions, plus rebuilt adjustment factors (see P1 notes).
 
 **Gate (per strategy), on in-sample + validation (pre-holdout) data, net of base costs:**
 - Deflated Sharpe probability ≥ 0.95, using the family trial count.

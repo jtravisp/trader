@@ -76,3 +76,8 @@ Last updated 2026-11-03. This is a living file: add findings with sources and da
 - **EDGAR `acceptanceDateTime` is true UTC.** Apple's 16:30 ET earnings 8-Ks show 20:30Z (EDT) and 21:30Z (EST). [strong; direct test]
 - **alpaca-py 0.44 can't parse the asset list:** its exchange enum lacks `TXSE` (Texas Stock Exchange). We use raw REST for assets. [strong]
 - **Yahoo adjusted closes match Alpaca adjustment=all to the cent** on the AAPL 2020 split window. Yahoo (yfinance) is used only as the second source in quality checks. [moderate; one spot check, the full 20-name check is in the quality report]
+
+## Backtest evidence (P2/P3, pre-holdout 2016-2025-10)
+- **S01 ETF trend + vol targeting fails the P3 gate.** 30 ETFs, weekly, 6 pre-declared variants. Sharpe 0.49–0.61 vs SPY 0.86. DSR 0.94 at 6 trials, PBO 0.86 (variant choice is not robust). The 50/50 blend with SPY has negative alpha. It does cut drawdowns (−23% vs −34%) and is insensitive to costs and a 1-day delay. Consistent with the post-2009 weakness of trend-following in equities-heavy ETF sets. [strong for this sample; one family, 9 years]
+- **Survivorship bias, measured:** 12-1 momentum on today's top-1000 names (selected on 2025 volume) shows +35.5% CAGR, Sharpe 1.08, beta 1.34 (2017–2025). That is what selecting on later winners looks like, and the reason stock strategies wait for the point-in-time universe. [strong as a warning, uninformative as a signal]
+- **Harness:** the engine's buy-and-hold SPY matches the lake exactly. 100 random-selection seeds have IR −0.05 ± 0.03 before costs. A next-day-return leak is caught by the truncation test. Report: `experiments/reports/P2_sanity.md`.

@@ -142,6 +142,34 @@ def score_status() -> None:
     budget.report(log=log)
 
 
+@app.command()
+def backtest(
+    strategy: str = typer.Option(..., help="Strategy ID declared in docs/STRATEGIES.md"),
+    params: str = typer.Option("{}", help="JSON parameters"),
+    constraints: str = typer.Option("limits", help="limits | none"),
+    notes: str = typer.Option(""),
+) -> None:
+    """Run + register base, 2x-cost and +1-day-delay backtests; write a report."""
+    import json
+
+    from trader.research import runner
+
+    runner.full_experiment(strategy, json.loads(params), constraints=constraints, notes=notes, log=log)
+
+
+@app.command()
+def sanity(seeds: int = 100, only: str = typer.Option("", help="san01|san02|san03|san04")) -> None:
+    """P2 gate: harness sanity tests (registered)."""
+    from trader.research import sanity as sn
+
+    if only:
+        ok, lines = getattr(sn, only)(log=log) if only != "san02" else sn.san02(seeds, log=log)
+        print(chr(10).join(lines))
+    else:
+        ok = sn.run_all(seeds, log=log)
+    raise typer.Exit(0 if ok else 1)
+
+
 @app.command("score-smoke")
 def score_smoke() -> None:
     """One live scoring request to validate the LLM setup (~$0.0001)."""
