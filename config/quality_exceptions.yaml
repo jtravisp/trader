@@ -1,0 +1,26 @@
+# Explained data-quality failures. Every entry needs a reason with evidence.
+# "Explained" means the cause is known, not that the data is fine: see `action`.
+- check: adjustment_2nd_source
+  key: "DOC:*"
+  reason: >-
+    CONFIRMED Alpaca defect. Healthpeak took the DOC ticker from Physicians Realty in 2024. Alpaca's
+    adjustment=all applies both companies' dividends to the reused ticker (factor steps on HCP
+    ex-dates Feb 4/May 5/Nov 8 2016 and on Physicians Realty ex-dates Jan 13/Mar 30/Jun 30 2016),
+    inflating adjusted returns by about 5-7%/yr. Yahoo is correct.
+  action: "P3: rebuild adjustment factors from raw bars + Massive corporate actions; exclude DOC until then."
+- check: adjustment_2nd_source
+  key: "BDX:2022"
+  reason: >-
+    Probable. Embecta (EMBC) spin-off on 2022-04-01. Alpaca's factor doesn't credit the spin-off
+    value (+2.5% vs Yahoo +5.1%, gap is about the EMBC distribution value).
+  action: "P3 rebuild; spin-off handling must be verified on other spin-offs."
+- check: adjustment_2nd_source
+  key: "AVGO:2018"
+  reason: Probable. Broadcom redomiciled Singapore -> US (new issuer) in April 2018; the vendors differ by 1.4%.
+  action: "P3 rebuild."
+- check: adjustment_2nd_source
+  key: "BG:2023"
+  reason: >-
+    Probable. Bunge redomiciled to Switzerland (new issuer) in Nov 2023. Alpaca +5.1% vs Yahoo +3.8%;
+    price change plus about a 2.7% dividend gives about 3.9%, so Yahoo looks right.
+  action: "P3 rebuild."

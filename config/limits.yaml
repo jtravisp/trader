@@ -1,0 +1,29 @@
+# Risk gateway limits. Enforced by src/trader/risk, independent of any strategy.
+# Changing this file requires a note in docs/DECISIONS.md.
+account:
+  allow_margin: false
+  allow_short: false
+  max_gross_exposure: 1.00        # fraction of equity
+position:
+  max_weight_per_name: 0.10       # stocks
+  max_weight_per_etf: 0.35
+orders:
+  fractional_shares: true            # D10: $200 capital
+  min_order_notional_usd: 1.00       # Alpaca fractional minimum; skip smaller rebalances
+  min_rebalance_drift: 0.02          # don't trade a position unless it's >2% of equity off target
+  max_orders_per_run: 60
+  max_orders_per_day: 120
+  max_notional_per_order_pct: 0.12   # of equity
+  max_daily_turnover: 0.60           # fraction of equity traded per day
+  trading_window_et: ["09:35", "15:50"]
+  symbol_allowlist: universe         # only the current point-in-time universe + ETF list
+drawdown:
+  daily_loss_halt: 0.04              # halt new orders if equity is down 4% on the day
+  peak_drawdown_halt: 0.15           # halt + human review
+# Breach handling (decision D9). Normal trading is fully automated.
+on_breach:
+  order_violation: refuse_order_and_alert       # rest of the batch proceeds
+  daily_loss_halt: halt_until_next_session      # auto-resumes
+  peak_drawdown_halt: halt_until_human_clears
+  reconciliation_mismatch: halt_until_human_clears
+  duplicate_order_detected: halt_until_human_clears

@@ -1,0 +1,172 @@
+# Phased Plan
+
+Status: draft v1 (2026-11-03). Every phase ends with a **gate**. Failing a gate means you fix the problem, go back a phase, or stop. You never skip a gate.
+
+Budget: about $25/mo for data, going over only for a clear advantage. Expected run-rate:
+- Phases 1–2: $0 (Alpaca free tier plus EDGAR and FRED).
+- Phase 3: a one-time $29 for one month of Massive Starter, to bulk-download 5 years of survivorship-free history, then cancel (D3 revised).
+- LLM scoring: capped at $3/mo in code (D11).
+
+## Timeline at a glance
+
+```
+Week:      1  2  3  4  5  6  7  8  9 10 11 12 13 ... 24+
+P0 setup   ■
+P1 data       ■  ■
+   forward LLM scoring ───────────────────────────────────▶ (runs continuously)
+P2 harness       ■  ■
+P3 baselines        ■  ■  ■
+P4 live stack          ■  ■  ■   → paper-trade best baseline ────────────▶
+P5 ML ranker              ■  ■  ■  ■
+P6 LLM features              ■  ■  ■  ■
+P7 holdout + selection                  ■
+P8 paper trading (final candidate)        ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■  (≥ 3 months)
+P9 live small                                                     ■ ...
+```
+
+Forward collection (LLM scores, paper fills) starts early. Elapsed time is the bottleneck, not coding.
+
+---
+
+## P0 — Setup (this week)
+- [x] Research synthesis (`docs/RESEARCH.md`), architecture, plan, skills, CLAUDE.md
+- [x] Alpaca account. Create **paper** keys, with separate data and trade key pairs.
+- [x] Anthropic API key for LLM scoring
+- [x] `git init` and a private GitHub remote
+- [x] `uv` project on Python 3.12, with lint, test, and type-check tooling
+
+**Gate:** `uv run pytest` passes on an empty test suite, and the Alpaca MCP can return a SPY quote.
+
+## P1 — Data foundation (weeks 1–2)
+- Ingest:
+  - Alpaca daily bars from 2016 for the ETF universe plus current top ~1000 stocks.
+  - Minute bars for the ETFs only, for slippage modeling.
+  - Alpaca news from 2015.
+  - EDGAR 8-K index plus XBRL company facts.
+  - FRED series.
+- Build the Parquet lake with `event_ts` and `known_ts` columns, plus the holdout guard.
+- **Holdout = 2025-11-01 → 2026-11-01**, locked. New data after today counts as forward data.
+- Run data-quality checks:
+  - Compare split/dividend adjustment against a second source for 20 random names.
+  - Check for bar gaps.
+- **Survivorship check:** compare an Alpaca universe for one past date against the list of names that have since delisted. If the gap is material, which is expected, subscribe to Massive Starter ($29) in P3.
+- **Start forward LLM scoring:** a daily job scores new news items and caches them. Measure cost per day.
+
+**Gate:**
+- SPY total return computed from the lake matches a published figure within 0.5%/yr.
+- Zero unexplained quality failures.
+- The forward scoring job has run for 5 consecutive days.
+
+**Status (2026-11-03):**
+- [x] Lake with `event_ts`/`known_ts` and the holdout guard (D12). The holdout year is never written. Tests: `tests/test_lake_guard.py`.
+- [x] Universe seed: 1000 stocks + 30 ETFs (D14).
+- [x] Daily bars 2016-01-04 → 2025-10-31, raw + adjusted, 1030 symbols. Forward bars from 2026-11-02.
+- [~] Minute bars (ETFs, 2021+): backfilling.
+- [~] News 2015+ (headline + summary): backfilling, about 3.5 h.
+- [x] EDGAR: 1.41M filings (39k earnings 8-Ks with acceptance times) + 2.05M XBRL facts for 992 CIKs.
+- [x] FRED: 15 series, point-in-time (D15, D17).
+- [x] Quality checks (`trader quality`). Known Alpaca adjustment defects at ticker reuse, spin-offs and redomiciles are documented in `config/quality_exceptions.yaml`.
+- [x] Survivorship check: **gap confirmed.** 19/48 delisted names can be enumerated from Alpaca, but 45/48 still have bars. The fix needs the *list* of historical tickers.
+- [x] Forward job (`trader forward`): data + LLM scoring work (`score-smoke` passes, ~$0.00008/item via batch). Scheduled daily at 18:00 CT (`trader-forward` task). Gate clock started 2026-11-03.
+- Gate 1 (SPY within 0.5%/yr): **PASS** for 2017–2024. 2016 can't be checked (no 2015 base bar).
+
+**Carried into P3 from P1:**
+- Rebuild split/dividend adjustment factors from raw bars + Massive corporate actions, then diff against Alpaca's `adjustment=all` for every name. Alpaca double-counts dividends on reused tickers (DOC), and its spin-off handling is suspect (BDX).
+- Build the point-in-time universe with the delisted-ticker list. Alpaca already serves most delisted names' bars, so the Massive month mainly buys the list and the corporate actions.
+
+## P2 — Backtest harness (weeks 2–3)
+- Build:
+  - the engine (next-open fills).
+  - the cost model (base cost and 2×).
+  - vol-targeted sizing with caps matching `limits.yaml`.
+  - metrics, purged K-fold/CPCV, deflated Sharpe, PBO via CSCV, bootstrap confidence intervals.
+  - the experiment registry and the report generator.
+- Run sanity tests:
+  - Buy-and-hold SPY reproduces P1's number.
+  - A random signal has Sharpe ≈ 0 after costs, across 100 seeds.
+  - A deliberately leaky signal (using tomorrow's return) is caught by the timing test.
+  - Textbook 12-1 momentum on the universe gives a plausible result: positive but noisy, in line with the literature.
+
+**Gate:** all sanity tests pass, and the leak test fails as it should.
+
+## P3 — Rule baselines (weeks 3–5)
+Use the `run-experiment` skill for every trial. Candidates:
+1. ETF trend + vol targeting
+2. Cross-sectional short-term reversal (weekly)
+3. Medium-term momentum (monthly)
+4. Earnings drift from EDGAR 8-K 2.02 plus the announcement-day reaction
+
+Keep the parameter grids small and pre-declared in `docs/STRATEGIES.md` before running.
+
+**Gate (per strategy), on in-sample + validation (pre-holdout) data, net of base costs:**
+- Deflated Sharpe probability ≥ 0.95, using the family trial count.
+- PBO ≤ 0.30.
+- Sharpe > 0 under 2× costs.
+- Positive in at least 2 of 3 subperiods.
+- Correlation to SPY reported. A low-correlation strategy with a lower Sharpe can still pass if it improves a SPY blend.
+
+The best passing baseline goes to paper trading as soon as P4 is ready. That starts the forward clock early.
+
+## P4 — Live stack on paper (weeks 4–6, parallel)
+- Build:
+  - the runner and the risk gateway with `limits.yaml`.
+  - reconciliation and idempotent orders.
+  - the kill and flatten commands.
+  - monitoring, alerts, and the daily report.
+  - Task Scheduler jobs.
+- Run failure drills:
+  - Kill the process mid-run, then restart. It must reconcile, with no duplicate orders.
+  - Feed it a corrupted target. The gateway must refuse it.
+  - Simulate a limit breach. Trading must halt and an alert must go out.
+  - Test the kill switch.
+- Start paper trading the best P3 baseline.
+
+**Gate:** all drills pass, 10 consecutive clean trading days, and live-vs-backtest replay tracking error is within an agreed bound. Proposed bound: daily return difference under 10 bps on 90% of days.
+
+## P5 — ML ranker (weeks 5–9)
+- Train LightGBM on 5-day forward return rank across the universe, using price, event, fundamental, and regime features.
+- Use purged CV for hyperparameters and keep the search budget small, with every trial logged.
+- Check feature importance and stability across folds. Run ablations against the best baseline.
+
+**Gate:** beats the best baseline by a margin that survives the deflated Sharpe at the combined trial count, at 2× costs.
+
+## P6 — LLM features (weeks 6–10)
+- Score news and 8-K text with the schema-validated scorer.
+- **Evaluate only on documents after the scoring model's training cutoff** [D5]. To get a longer test window, also score with an open-weight model whose cutoff is older and documented, and test on the period after that cutoff.
+- Use the scores in two ways:
+  - (a) as features added to the P5 ranker.
+  - (b) as an event-risk veto in the gateway's pre-trade checks.
+- Measure the incremental Sharpe and return net of API cost, using forward data collected since P1.
+
+**Gate:** a statistically positive incremental lift on post-cutoff data. If the lift isn't there, the LLM is dropped from the signal path, and that's fine.
+
+## P7 — Holdout test and selection (week ~10)
+- Freeze the code version. Run the chosen candidate(s), at most 3, **once** on the holdout year.
+- Pass if the holdout Sharpe is > 0.5, is ≥ 50% of the in-sample Sharpe, and the max drawdown is within 1.5× the in-sample max drawdown.
+- If it fails, do **not** tweak and rerun the holdout. Go back to research. The holdout is then spent: the next holdout becomes forward paper data.
+
+## P8 — Paper trading the final candidate (≥ 3 months)
+- Use the full live stack. The daily review runs every trading day, and a weekly summary compares results against the backtest's expected distribution.
+- **Gate (`promote-strategy` skill):**
+  - ≥ 60 trading days.
+  - Realized results within the backtest's 90% band.
+  - Slippage ≤ the modeled level.
+  - Zero unexplained incidents.
+
+## P9 — Live, small ($200, taxable; D10)
+- The whole $200 goes in at once. Scaling up means adding new deposits, only after 3+ months of live results that track paper.
+- Taxes: short-term gains are taxed as ordinary income. The fill log must support Form 8949 export and wash-sale tracking. Alpaca issues a 1099-B, and our log is the cross-check.
+- Use a separate cash account (no margin) with a fixed deposit. Treat that deposit as the maximum loss.
+- Months 1–3: 25% of intended capital. Scale up only if live tracks paper and the modeled slippage holds.
+- Hard rules:
+  - Drawdown of 15% from peak → automatic halt and review.
+  - Strategy drift (live outside the 95% band for 20 days) → revert to SPY.
+- Taxes: log every fill, and see a CPA before year-end. Watch wash sales: frequent rebalancing around losses can trigger them.
+
+---
+
+## Open questions
+1. ~~Capital~~ **Resolved (D10):** $200.
+2. ~~Account type~~ **Resolved (D10):** taxable.
+3. ~~Order confirmation~~ **Resolved (D9):** orders are fully automated in paper and live. A human is needed only to clear a peak-drawdown halt, a reconciliation mismatch, or a duplicate-order halt. Promotion to live is a one-time approval, not per-order.
+4. ~~Holdout vs P4 paper trading~~ **Resolved (D16):** the live runner fetches its trailing window into memory, never to the lake, and paper results are judged on forward days only.

@@ -1,0 +1,47 @@
+# Universe definitions. Changing this file changes research results: note it in docs/DECISIONS.md.
+etfs:
+  # Broad equity
+  - SPY
+  - QQQ
+  - IWM
+  - DIA
+  - MDY
+  - EFA
+  - EEM
+  - VTI
+  # Sector SPDRs (XLC since 2018, XLRE since 2015)
+  - XLB
+  - XLE
+  - XLF
+  - XLI
+  - XLK
+  - XLP
+  - XLU
+  - XLV
+  - XLY
+  - XLC
+  - XLRE
+  # Rates, credit, real assets
+  - TLT
+  - IEF
+  - SHY
+  - LQD
+  - HYG
+  - TIP
+  - GLD
+  - SLV
+  - DBC
+  - USO
+  - VNQ
+stocks:
+  # Research universe seed: top N US common stocks by median daily dollar volume
+  # over the `rank_window_days` trading days ending just before the holdout.
+  # The point-in-time monthly top-500 is built later (P3) from bars, inside this seed.
+  target_count: 1000
+  candidate_count: 1600
+  rank_window_days: 60
+  min_price: 5.0
+  exchanges: [NYSE, NASDAQ, AMEX, ARCA, BATS]
+minute_bars:
+  # ETFs only, for slippage modelling
+  start: "2021-01-01"

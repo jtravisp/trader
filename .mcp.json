@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "alpaca": {
+      "command": "powershell",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/alpaca-mcp.ps1"]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Published SPY calendar-year total returns (dividends reinvested, market price), used by the P1 gate.
+# Source: totalrealreturns.com/n/SPY (fetched 2026-11-03); 2023-2025 cross-checked against
+# Yahoo Finance SPY performance page. 2025 is excluded: it overlaps the holdout (D7).
+source: "https://totalrealreturns.com/n/SPY"
+tolerance_per_year: 0.005
+SPY:
+  # 2016: 0.1200  -- not checkable: Alpaca history begins 2016-01-04, no 2015-12-31 base bar
+  2017: 0.2171
+  2018: -0.0457
+  2019: 0.3122
+  2020: 0.1833
+  2021: 0.2873
+  2022: -0.1818
+  2023: 0.2618
+  2024: 0.2489

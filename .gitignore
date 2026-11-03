@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+/data/
+/live/
+experiments/*.db
+experiments/reports/*.png
+KILL
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

@@ -1,0 +1,28 @@
+[data]
+lake_dir = "data/lake"
+raw_dir = "data/raw"
+quality_dir = "data/quality"
+history_start = "2016-01-01"
+# Locked holdout (decision D7). Loader refuses rows with known_ts >= this date.
+holdout_start = "2025-11-01"
+holdout_end = "2026-11-01"
+
+[costs]
+stock_bps_per_side = 5
+etf_bps_per_side = 2
+stress_multiplier = 2
+
+[llm]
+# Chosen 2026-11-03: cheapest current model ($0.10/$0.50 per MTok, batch -50%).
+# Training-data cutoff per platform.claude.com models overview (fetched 2026-11-03): Jun 2026.
+# D5: only documents published on/after scoring_eval_start count as go/no-go evidence.
+scoring_model = "claude-haiku-5-5"
+scoring_model_cutoff = "2026-06"
+scoring_eval_start = "2026-07-01"
+prompt_version = "v1"
+monthly_budget_usd = 3.0   # D11, enforced in trader.llm.budget
+daily_budget_usd = 0.14    # ~= 3.0 / 21 trading days
+
+[live]
+mode = "paper"
+timezone = "America/New_York"
