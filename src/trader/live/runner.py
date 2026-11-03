@@ -1,0 +1,72 @@
+"""Live runner: after the close, compute tomorrow's target portfolio and write it to live/orders.db.
+The gateway executes it in the next session's trading window (same timing as the backtest).
+
+D16: strategies get trailing history fetched from Alpaca into memory (never written to the lake).
+D19: until a strategy passes P3, the configured strategy is FALLBACK (100% SPY).
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+import numpy as np
+import polars as pl
+
+from trader import calendar
+from trader.config import settings
+from trader.risk import state
+
+FALLBACK = "FALLBACK"
+
+
+def last_closed_session() -> datetime.date:
+    cutoff = datetime.now(UTC) - timedelta(minutes=20)
+    return calendar.sessions_frame().filter(pl.col("close_ts") <= cutoff)["date"].max()
+
+
+def memory_panel(symbols: list[str], sessions: int = 300):
+    """Trailing daily panel for live use only (D16): fetched, never stored."""
+    from trader.backtest.panel import panel_from_frame
+    from trader.data.bars import _daily_frame, _fetch
+    from trader.data.http import RawArchive
+
+    end = last_closed_session() + timedelta(days=1)
+    start = calendar.sessions(end - timedelta(days=int(sessions * 1.6)), end)[-sessions]
+    arch = RawArchive("alpaca_bars_live", f"{end}")
+    raw = pl.concat([_fetch(symbols[i : i + 100], "1Day", start, end, "raw", arch) for i in range(0, len(symbols), 100)])
+    adj = pl.concat([_fetch(symbols[i : i + 100], "1Day", start, end, "all", arch) for i in range(0, len(symbols), 100)])
+    return panel_from_frame(_daily_frame(raw, adj))
+
+
+def compute_target(strategy_id: str, params: dict) -> dict[str, float] | None:
+    if strategy_id == FALLBACK:
+        return {"SPY": 1.0}
+    from trader.signals.library import REGISTRY
+    from trader.universe.build import etf_list, load_seed
+
+    strat = REGISTRY[strategy_id](**params)
+    syms = etf_list() + ([] if not strat.stock_universe else load_seed()["symbol"].to_list())
+    p = memory_panel(syms)
+    row = strat.targets(p)[-1]
+    if np.all(np.isnan(row)):
+        return None  # not a rebalance day for this strategy
+    w = {s: float(x) for s, x in zip(p.symbols, np.nan_to_num(row), strict=True) if x > 1e-6}
+    return w or {"$CASH": 1.0}
+
+
+def run(log=print) -> str | None:
+    live = settings().raw["live"]
+    sid, params = live.get("strategy", FALLBACK), live.get("params", {})
+    d = last_closed_session()
+    run_id = f"{sid}-{d.isoformat()}"
+    con = state.connect()
+    if con.execute("SELECT 1 FROM runs WHERE run_id=?", (run_id,)).fetchone():
+        log(f"runner: {run_id} already written")
+        return run_id
+    tgt = compute_target(sid, params)
+    if tgt is None:
+        log(f"runner: {sid} does not rebalance after {d}")
+        return None
+    state.write_target(con, run_id, sid, tgt)
+    log(f"runner: wrote {run_id}: {len(tgt)} names, gross {sum(v for k, v in tgt.items() if k != '$CASH'):.2f}")
+    return run_id

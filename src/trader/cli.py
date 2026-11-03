@@ -88,6 +88,17 @@ def ingest_fred() -> None:
     fred.ingest(log=log)
 
 
+@ingest_app.command("massive")
+def ingest_massive() -> None:
+    """Massive free-tier reference data: month-end ticker snapshots, splits, dividends (~4 h)."""
+    from trader.data import massive
+
+    log(f"massive ticker snapshots: {len(massive.snapshot_dates())} month-ends")
+    massive.ingest_tickers(log=log)
+    massive.ingest_corporate_actions(log=log)
+    log("done")
+
+
 @ingest_app.command("all")
 def ingest_all() -> None:
     """Every Alpaca backfill in sequence (shares one rate limiter)."""
@@ -168,6 +179,117 @@ def sanity(seeds: int = 100, only: str = typer.Option("", help="san01|san02|san0
     else:
         ok = sn.run_all(seeds, log=log)
     raise typer.Exit(0 if ok else 1)
+
+
+gw_app = typer.Typer(no_args_is_help=True, help="Live runner and risk gateway (paper unless mode=live).")
+app.add_typer(gw_app, name="live")
+
+
+def _broker():
+    from trader.risk.broker import AlpacaBroker
+
+    b = AlpacaBroker()
+    if not b.paper and settings().live_mode != "live":
+        log("REFUSED: trade keys point at a LIVE account but settings.toml [live] mode is not 'live'")
+        raise typer.Exit(2)
+    return b
+
+
+@gw_app.command("target")
+def live_target() -> None:
+    """After the close: compute and store tomorrow's target portfolio."""
+    from trader.live import runner
+
+    runner.run(log=log)
+
+
+@gw_app.command("execute")
+def live_execute(run_id: str = typer.Option("", help="default: latest pending run"),
+                 submit: bool = typer.Option(False, help="actually send orders (otherwise dry run)")) -> None:
+    """In the trading window: validate the pending target and send orders through the gateway."""
+    from datetime import UTC
+    from datetime import datetime as dt
+
+    from trader.config import limits
+    from trader.risk import gateway, state
+    from trader.universe.build import etf_list, load_seed
+
+    con = state.connect()
+    if not run_id:
+        row = con.execute("SELECT run_id FROM runs WHERE status IN ('target_written','incomplete') ORDER BY created_at DESC LIMIT 1").fetchone()
+        if not row:
+            log("no pending target")
+            return
+        run_id = row[0]
+        # older targets that never executed are stale: only the latest decision may trade
+        n = con.execute("UPDATE runs SET status='superseded' WHERE status IN ('target_written','incomplete') AND run_id != ?", (run_id,)).rowcount
+        con.commit()
+        if n:
+            log(f"marked {n} older pending target(s) superseded")
+    allow = set(etf_list()) | set(load_seed()["symbol"].to_list())
+    res = gateway.run(run_id, _broker(), con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit)
+    log(f"gateway {run_id}: {res.status}, submitted {res.submitted}, refused {len(res.refused)}")
+    for n in res.notes:
+        log(f"  note: {n}")
+    for s, why in res.refused:
+        log(f"  refused {s}: {why}")
+
+
+@gw_app.command("report")
+def live_report(day: str = typer.Option(None, help="New York date; default today")) -> None:
+    """Daily live report (read-only): live/reports/<date>.md."""
+    from trader.monitor import daily
+
+    daily.build(_d(day) or datetime.now(NY).date(), _broker(), log=log)
+
+
+@gw_app.command("kill")
+def live_kill() -> None:
+    """Kill switch: cancel all open orders and block new ones (creates KILL)."""
+    from trader.risk import gateway, state
+
+    log(f"kill: cancelled {gateway.kill(_broker(), state.connect())} orders; remove with `trader live unkill`")
+
+
+@gw_app.command("unkill")
+def live_unkill() -> None:
+    """Human: remove the kill switch."""
+    from trader.risk import state
+
+    state.KILL_FILE.unlink(missing_ok=True)
+    state.event(state.connect(), "warning", "kill_cleared", "operator removed KILL")
+    log("kill switch removed")
+
+
+@gw_app.command("flatten")
+def live_flatten(yes: bool = typer.Option(False, "--yes", help="confirm")) -> None:
+    """Human: close every position (market orders)."""
+    from trader.risk import gateway, state
+
+    if not yes:
+        log("refusing without --yes")
+        raise typer.Exit(1)
+    log(f"flatten: {gateway.flatten(_broker(), state.connect())} close orders")
+
+
+@gw_app.command("halts")
+def live_halts() -> None:
+    """Show active halts."""
+    from trader.risk import state
+
+    con = state.connect()
+    from datetime import datetime as dt
+
+    for h in state.active_halts(con, dt.now(NY).date().isoformat()):
+        log(f"{h['kind']} since {h['set_at']}: {h['reason']}")
+
+
+@gw_app.command("clear-halt")
+def live_clear_halt(kind: str, who: str = typer.Option(..., help="your name, for the audit log")) -> None:
+    """Human: clear a peak_drawdown / reconciliation_mismatch / duplicate_order halt after review."""
+    from trader.risk import state
+
+    log(f"cleared {state.clear_halt(state.connect(), kind, who)} {kind} halt(s)")
 
 
 @app.command("score-smoke")

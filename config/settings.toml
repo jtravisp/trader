@@ -26,3 +26,5 @@ daily_budget_usd = 0.14    # ~= 3.0 / 21 trading days
 [live]
 mode = "paper"
 timezone = "America/New_York"
+# D19: FALLBACK = 100% SPY until a strategy passes the P3 gate. Otherwise a strategy ID from signals.library.
+strategy = "FALLBACK"

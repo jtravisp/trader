@@ -235,6 +235,24 @@ def check_fred() -> list[Issue]:
     return out
 
 
+# ---------------------------------------------------------------- massive
+def check_massive() -> list[Issue]:
+    from trader.data import massive
+
+    if not lake.exists(massive.TICKERS):
+        return [Issue("massive", "_dataset", "massive_tickers not ingested yet", "warn")]
+    t = lake.scan(massive.TICKERS).group_by("snapshot").agg(
+        pl.len().alias("n"), (pl.col("primary_exchange") == "XNAS").sum().alias("nasdaq")
+    ).collect().sort("snapshot")
+    out = []
+    for snap, n, nas in t.iter_rows():
+        if nas < 1000:
+            sev = "warn" if snap < date(2016, 10, 31) else "fail"  # D20: pre-2016-10 snapshots are known-incomplete
+            out.append(Issue("massive", f"snapshot:{snap}", f"{n} names but only {nas} on NASDAQ (incomplete listing)", sev,
+                             "D20: universe starts 2016-10-31" if sev == "warn" else ""))
+    return out
+
+
 # ---------------------------------------------------------------- runner
 def run_all(sample: int = 20, seed: int = 7, log=print) -> bool:
     issues: list[Issue] = []
@@ -249,7 +267,7 @@ def run_all(sample: int = 20, seed: int = 7, log=print) -> bool:
     else:
         issues.append(Issue("daily", "_dataset", "bars_daily not ingested"))
     log("check: minute, news, edgar, fred")
-    issues += check_minute_coverage() + check_news() + check_edgar() + check_fred()
+    issues += check_minute_coverage() + check_news() + check_edgar() + check_fred() + check_massive()
     issues = _explain(issues)
     unexplained = [i for i in issues if i.severity == "fail" and not i.explained]
     write_report(issues)

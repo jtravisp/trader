@@ -104,7 +104,7 @@ Keep the parameter grids small and pre-declared in `docs/STRATEGIES.md` before r
 
 **Status (2026-11-03):**
 - S01 (ETF trend): **failed** the gate (DSR 0.94, PBO 0.86, Sharpe below SPY). Not a paper-trading candidate as a standalone edge.
-- S02–S04 (stocks): **waiting for the point-in-time universe.** That needs the one-month Massive Starter purchase (D3, $29): the delisted-ticker list and corporate actions, plus rebuilt adjustment factors (see P1 notes).
+- S02–S04 (stocks): **waiting for the point-in-time universe.** No purchase needed: Massive's free tier supplies the ticker lists and corporate actions, and the backfill is running (about 4 h). Next: build the monthly universe from 2016-10-31 (D20), fetch Alpaca bars for delisted names, handle reused tickers at the entity level, and rebuild the adjustment factors.
 
 **Gate (per strategy), on in-sample + validation (pre-holdout) data, net of base costs:**
 - Deflated Sharpe probability ≥ 0.95, using the family trial count.
@@ -130,6 +130,13 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - Start paper trading the best P3 baseline.
 
 **Gate:** all drills pass, 10 consecutive clean trading days, and live-vs-backtest replay tracking error is within an agreed bound. Proposed bound: daily return difference under 10 bps on 90% of days.
+
+**Status (2026-11-03): built; burn-in about to start.**
+- Risk gateway (`src/trader/risk/`, the only order path): target validation (a corrupt target is refused whole), caps (35% ETF, 10% stock, SPY up to 100% per D19), chunked orders (D18), turnover/order-count/buying-power limits, trading window, daily-loss (auto-resume) and peak-drawdown (human) halts, write-ahead order log, reconciliation, idempotent client order ids, kill / unkill / flatten.
+- Drills pass as tests: crash mid-run and restart with no duplicates, a lost order resubmitted once, corrupted targets, limit breach and halt, kill switch, unknown broker order → halt (`tests/test_gateway_drills.py`).
+- Live runner (D16 in-memory history) currently trades FALLBACK = 100% SPY (D19). Daily report with slippage vs open and replay tracking error: `trader live report`.
+- Scheduling: `scripts/register-tasks.ps1` (evening forward + report + target; weekday 08:40 CT gateway on paper). **User to re-run it** (it replaces the earlier single-task script).
+- Alerts: local log always; ntfy push once `NTFY_TOPIC` is set.
 
 ## P5 — ML ranker (weeks 5–9)
 - Train LightGBM on 5-day forward return rank across the universe, using price, event, fundamental, and regime features.

@@ -48,8 +48,6 @@ class Panel:
 
 
 def load_panel(symbols: Sequence[str] | None = None, start: date | None = None, end: date | None = None) -> Panel:
-    from trader.universe.build import etf_list
-
     lf = lake.scan(bars.DAILY)  # research read: pre-holdout only
     if symbols is not None:
         lf = lf.filter(pl.col("symbol").is_in(list(symbols)))
@@ -57,7 +55,13 @@ def load_panel(symbols: Sequence[str] | None = None, start: date | None = None, 
         lf = lf.filter(pl.col("date") >= start)
     if end is not None:
         lf = lf.filter(pl.col("date") < end)
-    df = lf.select("symbol", "date", "adj_open", "adj_close", "close", "volume").collect()
+    return panel_from_frame(lf.select("symbol", "date", "adj_open", "adj_close", "close", "volume").collect())
+
+
+def panel_from_frame(df: pl.DataFrame) -> Panel:
+    """Long frame (symbol, date, adj_open, adj_close, close, volume) -> dense Panel."""
+    from trader.universe.build import etf_list
+
     syms = sorted(df["symbol"].unique().to_list())
     dates = sorted(df["date"].unique().to_list())
 

@@ -7,13 +7,16 @@ account:
 position:
   max_weight_per_name: 0.10       # stocks
   max_weight_per_etf: 0.35
+  # D19: the fallback portfolio ("no strategy passed -> hold SPY") may hold the benchmark at 100%.
+  benchmark_symbol: SPY
+  max_weight_benchmark: 1.00
 orders:
   fractional_shares: true            # D10: $200 capital
   min_order_notional_usd: 1.00       # Alpaca fractional minimum; skip smaller rebalances
   min_rebalance_drift: 0.02          # don't trade a position unless it's >2% of equity off target
   max_orders_per_run: 60
   max_orders_per_day: 120
-  max_notional_per_order_pct: 0.12   # of equity
+  max_notional_per_order_pct: 0.12   # of equity; larger rebalances are split into chunks (D18)
   max_daily_turnover: 0.60           # fraction of equity traded per day
   trading_window_et: ["09:35", "15:50"]
   symbol_allowlist: universe         # only the current point-in-time universe + ETF list
