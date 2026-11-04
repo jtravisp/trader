@@ -180,9 +180,11 @@ def gate() -> None:
 def forward(day: str = typer.Option(None, help="New York date; default = today")) -> None:
     """Daily forward job: today's news + bars, then LLM scoring within budget."""
     from trader.live import forward as fw
+    from trader.monitor.alerts import heartbeat
 
     d = _d(day) or datetime.now(NY).date()
     ok = fw.run(d, log=log)
+    heartbeat("forward", ok)
     raise typer.Exit(0 if ok else 1)
 
 
@@ -325,6 +327,10 @@ def live_execute(run_id: str = typer.Option("", help="default: latest pending ru
     allow = set(etf_list()) | set(load_seed()["symbol"].to_list())
     res = gateway.run(run_id, _broker(), con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit)
     log(f"gateway {run_id}: {res.status}, submitted {res.submitted}, refused {len(res.refused)}, deferred {len(res.deferred)}")
+    if submit:
+        from trader.monitor.alerts import heartbeat
+
+        heartbeat("gateway", res.status in ("executed", "already_executed", "outside_window"))
     for n in res.notes:
         log(f"  note: {n}")
     for s, why in res.refused:

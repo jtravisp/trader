@@ -147,3 +147,15 @@ def test_delisting_return_applied_once_on_exit():
     p2 = Panel(p.dates, p.symbols, p.open, p.close, p.raw_close, p.dollar_volume, p.is_etf, {"delist_ret": {0: -0.5}})
     r = engine.run(p2, tg, NOCOST, FREE)
     assert np.isclose(r.net[3], -0.25) and np.allclose(r.net[4:], 0) and np.allclose(r.net[:3], 0)
+
+
+def test_name_pnl_attributes_gross_returns():
+    rng = np.random.default_rng(2)
+    c = 100 * np.cumprod(1 + rng.normal(0, 0.001, (60, 3)), axis=0)
+    o = c * (1 + rng.normal(0, 0.0005, (60, 3)))
+    p = make_panel(o, c)
+    tg = np.full((60, 3), np.nan)
+    tg[0] = [0.5, 0.3, 0.2]
+    r = engine.run(p, tg, NOCOST, FREE)
+    assert np.isclose(r.name_pnl.sum(), r.gross.sum(), rtol=1e-3)
+    assert abs(r.name_pnl[0]) > abs(r.name_pnl[2]) * 0.5  # larger weight, larger share (same vol)

@@ -69,6 +69,7 @@ class Result:
     n_names: np.ndarray
     clipped_days: int
     stale_exits: int
+    name_pnl: np.ndarray | None = None  # N: sum of daily gross contributions (weight x return), by name
 
 
 def apply_constraints(w: np.ndarray, is_etf: np.ndarray, c: Constraints) -> tuple[np.ndarray, bool]:
@@ -107,6 +108,7 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
     dr = np.zeros(panel.N)
     for j, v in (panel.meta.get("delist_ret") or {}).items():
         dr[j] = v
+    name_pnl = np.zeros(panel.N)
     for d in range(1, T):
         # overnight: close d-1 -> open d, on drifted weights
         g = o[d] / c[d - 1] - 1.0
@@ -115,6 +117,7 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
             stale += int((missing & (w > 0)).sum())  # held name stopped trading
         g = np.where(missing, np.where(last == d - 1, dr, 0.0), g)
         pg = float(w @ g)
+        name_pnl += w * g
         w_open = w * (1 + g) / (1 + pg) if pg > -1 else w
         day_gross = 1 + pg
         day_net = 1 + pg
@@ -142,6 +145,7 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
         r = c[d] / o[d] - 1.0
         r = np.where(np.isfinite(r), r, 0.0)
         pr = float(w_open @ r)
+        name_pnl += w_open * r * (1 + pg)
         w = w_open * (1 + r) / (1 + pr) if pr > -1 else w_open
         day_gross *= 1 + pr
         day_net *= 1 + pr
@@ -149,7 +153,7 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
         gross[d] = day_gross - 1
         expo[d] = float(w.sum())
         nn[d] = int((w > 1e-9).sum())
-    return Result(panel.dates, net, gross, turn, cst, expo, nn, clipped_days, stale)
+    return Result(panel.dates, net, gross, turn, cst, expo, nn, clipped_days, stale, name_pnl)
 
 
 def truncation_leak_check(strategy, panel: Panel, cuts: int = 3, seed: int = 0, warmup: int = 300) -> tuple[bool, str]:

@@ -37,3 +37,16 @@ def send(title: str, message: str, priority: str = "3") -> int | None:
         return httpx.post(f"https://ntfy.sh/{topic}", content=message.encode(), timeout=10, headers=headers).status_code
     except httpx.HTTPError:
         return None  # alerting must never break trading; the local log has it
+
+
+def heartbeat(job: str, ok: bool = True) -> None:
+    """Dead-man's switch: ping healthchecks.io (or any compatible URL) when a scheduled job finishes.
+    Configure HC_FORWARD_URL / HC_GATEWAY_URL in .env; the check alerts you when pings stop arriving
+    (PC off, task broken), which ntfy alone can't detect. A no-op when unset; never raises."""
+    url = secret(f"HC_{job.upper()}_URL", required=False)
+    if not url:
+        return
+    try:
+        httpx.get(url if ok else url.rstrip("/") + "/fail", timeout=10)
+    except httpx.HTTPError:
+        pass

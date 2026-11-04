@@ -102,6 +102,36 @@ def family_stats(family: str, trial: Trial) -> dict:
     return out
 
 
+def red_flags(base: Trial, dly: Trial, p: Panel, start: int) -> list[str]:
+    """run-experiment step 4: concentration in days/names, too-good Sharpe, delay sensitivity, decay."""
+    r = base.result.net[start:]
+    lr = np.log1p(r)
+    tot = lr.sum()
+    out = []
+    sh = base.summary["sharpe"]
+    out.append(f"{'**FLAG** ' if sh > 2 else ''}Sharpe {sh:.2f} (flag if > 2 on daily data)")
+    k = max(1, int(len(r) * 0.01))
+    top = np.sort(lr)[::-1][:k].sum()
+    share = top / tot if tot > 0 else float("nan")
+    out.append(f"{'**FLAG** ' if tot > 0 and share > 0.5 else ''}best 1% of days ({k}) = {share:.0%} of total log return"
+               + (" (total <= 0)" if tot <= 0 else ""))
+    ex = np.delete(r, np.argsort(r)[::-1][:10])
+    out.append(f"Sharpe without the 10 best days: {stats.sharpe(ex) * np.sqrt(252):.2f}")
+    pn = base.result.name_pnl
+    if pn is not None and pn.sum() > 0:
+        order = np.argsort(pn)[::-1]
+        s5 = pn[order[:5]].sum() / pn.sum()
+        names = ", ".join(f"{p.symbols[j]} {pn[j] / pn.sum():.0%}" for j in order[:5])
+        out.append(f"{'**FLAG** ' if s5 > 0.5 else ''}top 5 names = {s5:.0%} of gross P&L ({names})")
+    d = dly.summary["sharpe"]
+    out.append(f"{'**FLAG** ' if sh > 0 and d < 0.5 * sh else ''}delay +1 day Sharpe {d:.2f} vs {sh:.2f}")
+    yrs = p.dates[start:].astype("datetime64[Y]").astype(int) + 1970
+    pre = lr[yrs < 2018].sum()
+    if tot > 0 and (yrs < 2018).any():
+        out.append(f"{'**FLAG** ' if pre / tot > 0.6 else ''}pre-2018 share of log return {pre / tot:.0%}")
+    return out
+
+
 def write_report(strategy_id: str, params: dict, base: Trial, x2: Trial, dly: Trial, p: Panel, leak: tuple[bool, str], notes: str = ""):
     fam = REGISTRY[strategy_id].family
     fs = family_stats(fam, base)
@@ -132,6 +162,7 @@ def write_report(strategy_id: str, params: dict, base: Trial, x2: Trial, dly: Tr
     L += ["", "| subperiod | CAGR | Sharpe | max DD |", "|---|---|---|---|"]
     for sp in metrics.subperiods(base.result.net[start:], p.dates[start:]):
         L.append(f"| {sp['start']} .. {sp['end']} | {sp['cagr']:+.2%} | {sp['sharpe']:.2f} | {sp['max_dd']:.1%} |")
+    L += ["", "Red flags (run-experiment step 4):", ""] + [f"- {x}" for x in red_flags(base, dly, p, start)]
     gate = {
         "DSR >= 0.95": fs["dsr"] >= 0.95,
         "PBO <= 0.30": fs.get("pbo", 1.0) <= 0.30 if "pbo" in fs else None,
