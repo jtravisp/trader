@@ -34,6 +34,9 @@ def panel(universe: str = "seed") -> Panel:
             _PANELS[universe] = load_pit_panel()
         else:
             _PANELS[universe] = load_panel()
+        from trader.research.fields import attach
+
+        _PANELS[universe] = attach(_PANELS[universe])  # fundamentals (PIT lines only) + FRED regime
     return _PANELS[universe]
 
 

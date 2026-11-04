@@ -150,8 +150,11 @@ class EarningsDrift(Strategy):
         return np.where(active, 1.0 / np.maximum(cnt, floor), 0.0)
 
 
+from trader.signals.ml import LgbmRanker  # noqa: E402
+
 REGISTRY: dict[str, type[Strategy]] = {
     "S04": EarningsDrift,
+    "S05": LgbmRanker,
     "S01": EtfTrend,
     "S02": ShortTermReversal,
     "SAN01": BuyHold,

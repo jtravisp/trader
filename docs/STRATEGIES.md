@@ -27,7 +27,8 @@ Notes:
     - Stock features are cross-sectional percentile ranks per day: returns 1/5/20/60 and 12-1, volatility 20/60, overnight and intraday means, gap, distance from the 252-day high, volume surprise, log dollar volume, beta, days since earnings, last earnings reaction z.
     - Fundamentals (from filings, as known at acceptance time): log market cap, earnings yield, book-to-market, sales-to-price, ROA, accruals, leverage, revenue growth, EPS growth, filing age.
     - Regime features are raw: SPY 200-day trend and 20-day volatility, VIX, 10y−2y and 10y−3m curve, BAA−AAA spread, 10-year yield.
-    - Feature sets: `price` = price/volume/event plus SPY regime; `price+fund` adds fundamentals; `all` adds the FRED regime.
+    - Feature sets: `price` = price/volume/event; `price+fund` adds fundamentals; `all` adds the regime features (SPY trend/vol and FRED).
+    - *Amended 2026-11-03, before any S05 result was computed.* A targets-only timing run on the seed panel computed no returns, metrics or trials. Its feature importances showed the regime features (constant across stocks on a day) taking the top 7 gain slots. With a per-day rank label they mostly identify the date, which is a memorization risk. So regime features moved from every set to `all` only, and the ablation now tests them. The grid size is unchanged (12).
   - **Walk-forward:**
     - The model is retrained each January 1 on an expanding window from 2016-11 to the prior December 31. The last 5 sessions before the cutoff are purged so no training label overlaps the test year, with a 5-session embargo.
     - The first test year is 2019 (training data 2016-11 to 2018-12). Test years run from 2019 to 2025-10, all before the holdout.

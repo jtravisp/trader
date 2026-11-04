@@ -51,6 +51,7 @@ ignore = ["E731", "B008", "E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: trains models (seconds)"]
 
 [tool.mypy]
 python_version = "3.12"
