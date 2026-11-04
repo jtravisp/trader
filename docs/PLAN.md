@@ -106,12 +106,10 @@ Keep the parameter grids small and pre-declared in `docs/STRATEGIES.md` before r
 
 **Status (2026-11-03):**
 - S01 (ETF trend): **failed** the gate (DSR 0.94, PBO 0.86, Sharpe below SPY). Not a paper-trading candidate as a standalone edge.
-- S02–S04 (stocks): implemented and declared. The data is in place:
-  - Massive listings, splits and dividends (1.6M dividend rows).
-  - EDGAR filings for every universe CIK.
-  - CIK validation and delisting returns (D24).
-  - Adjustment rebuild code (`trader adjustments`).
-  The point-in-time universe build is running (bars for about 8,800 delisted or missing symbols). Then: adjustment comparison → quality → `trader grid` for S02, S03 and S04 on `universe=pit`.
+- **Point-in-time universe built (2026-11-04):** 109 snapshots, top 1000, delisting returns (D24), bars clipped to listing windows (D25). Quality is clean.
+- S02 (reversal) and S04 (earnings drift): **failed**. No alpha after beta.
+- S03 (momentum): **passes the gate as declared**, but it is mostly beta (1.27). CAPM alpha t is 1.6. See RESEARCH.md. It is the best P3 baseline, so it is the candidate for paper trading via `promote-strategy`. Paper trading costs nothing, and it tests the stock path of the live stack.
+- Next: the S05 grid (12 trials). It must beat S03 after beta to matter.
 - P5/P6 groundwork, built ahead of time:
   - Feature library: price, event, fundamental (point-in-time XBRL TTM and growth per filing) and FRED regime.
   - The S05 walk-forward LightGBM ranker, declared (12 trials) and tested on a planted signal.
