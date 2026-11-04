@@ -16,3 +16,15 @@ def test_pin_accepts_head(tmp_path, monkeypatch):
     for t in tags:
         ok, why = runner.pin_ok(t)
         assert why in ("ok",) or "differs" in why
+
+
+def test_carried_target(tmp_path):
+    from trader.risk import state
+
+    con = state.connect(tmp_path / "o.db")
+    assert runner.carried_target(con) == (None, None)
+    state.write_target(con, "FALLBACK-2026-11-03", "FALLBACK", {"SPY": 1.0})
+    state.write_target(con, "BAD-2026-11-04", "X", {"ZZZ": 1.0})
+    con.execute("UPDATE runs SET status='rejected' WHERE run_id='BAD-2026-11-04'")
+    tgt, src = runner.carried_target(con)
+    assert tgt == {"SPY": 1.0} and src == "FALLBACK-2026-11-03"

@@ -100,8 +100,23 @@ def run(log=print) -> str | None:
             return None
     tgt = compute_target(sid, params)
     if tgt is None:
-        log(f"runner: {sid} does not rebalance after {d}")
-        return None
+        # Not a rebalance day: carry the latest target forward so the gateway can finish orders it
+        # deferred (turnover cap). The backtest reaches the target on rebalance day; min-drift keeps
+        # a carried target from trading drifted positions.
+        tgt, src = carried_target(con)
+        if tgt is None:
+            log(f"runner: {sid} does not rebalance after {d} and there is no earlier target")
+            return None
+        state.write_target(con, run_id, sid, tgt)
+        log(f"runner: {sid} does not rebalance after {d}; carried {src} forward as {run_id}")
+        return run_id
     state.write_target(con, run_id, sid, tgt)
     log(f"runner: wrote {run_id}: {len(tgt)} names, gross {sum(v for k, v in tgt.items() if k != '$CASH'):.2f}")
     return run_id
+
+
+def carried_target(con) -> tuple[dict[str, float] | None, str | None]:
+    row = con.execute("SELECT run_id FROM runs WHERE status != 'rejected' ORDER BY created_at DESC LIMIT 1").fetchone()
+    if not row:
+        return None, None
+    return {s: float(w) for s, w in state.read_target(con, row[0])}, row[0]
