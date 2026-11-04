@@ -143,15 +143,28 @@ def plan_orders(target: dict[str, float], acct: Account, pos: dict[str, Position
         if x.side == "buy":
             room = min(room, bp)
         if notional > room + 1e-6:
-            # shrink a notional order to the remaining room; full-exit (qty) orders can't shrink
+            if x.notional is None and room >= o["min_order_notional_usd"]:
+                # a full exit larger than today's room: sell what fits now in D18 chunks; the
+                # remainder (a full exit by qty) follows on a later day. Without this, a position
+                # worth more than the daily turnover cap could never be exited.
+                k, left = 0, room
+                while left >= o["min_order_notional_usd"] and len(plan.orders) < run_cap:
+                    piece = min(left, max_chunk)
+                    plan.orders.append(PlannedOrder(x.symbol, "sell", piece, None, 100 + k))
+                    used += piece
+                    left -= piece
+                    k += 1
+                plan.notes.append(f"{x.symbol}: partial exit {room - left:.2f} of {notional:.2f} (turnover limit); rest later")
+                continue
+            # shrink a notional order to the remaining room
             if x.notional is not None and room >= o["min_order_notional_usd"]:
                 plan.notes.append(f"{x.symbol}: order shrunk from {notional:.2f} to {room:.2f} (turnover/buying power)")
                 x.notional = notional = room
             else:
-                if x.side == "buy" and bp < turnover_cap - used:
-                    plan.refused.append((x.symbol, "insufficient buying power"))
-                else:
-                    plan.deferred.append((x.symbol, f"daily turnover limit ({o['max_daily_turnover']:.0%}) reached"))
+                # expected throttling (cash not yet freed by sells, or turnover used): retried next session
+                why = "waiting for buying power" if x.side == "buy" and bp < turnover_cap - used else \
+                    f"daily turnover limit ({o['max_daily_turnover']:.0%}) reached"
+                plan.deferred.append((x.symbol, why))
                 continue
         if x.side == "buy":
             bp -= notional

@@ -223,3 +223,24 @@ def test_small_new_entries_are_ordered_resizes_below_drift_are_not(env):
     b = FakeBroker()
     res = _run(con, b, "r1", {"SPY": 0.01, "TLT": 0.01})
     assert res.status == "executed" and {o.symbol for o in b.orders} == {"SPY", "TLT"}
+
+
+def test_full_exit_larger_than_turnover_cap_sells_partially_then_finishes():
+    # SPY worth 70% of equity, target is 50 stocks: a qty exit would exceed the 60% cap forever
+    lim = limits()
+    acct = Account(1000, 1000, 300, 300)
+    pos = {"SPY": Position("SPY", 1.0, 700.0)}
+    tgt = {f"S{i}": 0.02 for i in range(50)}
+    allow = ALLOW | set(tgt)
+    t, plan = gateway.validate_target(list(tgt.items()), allow, lim)
+    plan = gateway.plan_orders(t, acct, pos, ETFS, lim, 0, 0.0, False, plan)
+    spy = [o for o in plan.orders if o.symbol == "SPY"]
+    assert spy and all(o.side == "sell" and o.qty is None and o.notional <= 120 + 1e-9 for o in spy)
+    assert sum(o.notional for o in spy) == pytest.approx(600)  # the whole day's room
+    assert not plan.refused  # buys waiting for cash are deferred, not alerts
+    assert any(why == "daily turnover limit (60%) reached" for _, why in plan.deferred)
+    assert len({o.client_order_id("r") for o in plan.orders}) == len(plan.orders)
+    # next day: the 100 left fits, so it exits by quantity (no dust)
+    pos2 = {"SPY": Position("SPY", 1 / 7, 100.0)}
+    plan2 = gateway.plan_orders(t, Account(1000, 1000, 900, 900), pos2, ETFS, lim, 0, 0.0, False)
+    assert [o.qty for o in plan2.orders if o.symbol == "SPY"] == [1 / 7]
