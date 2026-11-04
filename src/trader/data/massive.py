@@ -80,30 +80,84 @@ def ingest_tickers(log=print) -> int:
     return total
 
 
-def _corp_actions(path: str, date_field: str, dataset: str, key: list[str], fields: list[str], log=print) -> int:
-    s = settings()
-    start = (s.history_start - timedelta(days=60)).isoformat()
-    params = {f"{date_field}.gte": start, f"{date_field}.lt": s.holdout_start.isoformat(), "limit": 1000,
-              "order": "asc", "sort": date_field}
-    arch = RawArchive(dataset, f"{start}_{s.holdout_start}")
-    rows, n = [], 0
-    for page in _pages(path, params, arch):
-        rows += [{k: r.get(k) for k in fields} for r in page.get("results", [])]
-        n += 1
-        if n % 25 == 0:
-            log(f"  {dataset}: {len(rows)} rows ({n} pages)")
-    df = pl.DataFrame(rows, schema={k: (pl.Float64 if k in ("cash_amount", "split_from", "split_to") else pl.Utf8) for k in fields},
-                      infer_schema_length=None)
+def _archived_pages(dataset: str, name: str):
+    """Payloads already fetched for this query, in fetch order (all archive days). A record cut off
+    by a killed process ends the stream."""
+    import gzip
+    import json
+
+    for f in sorted((settings().raw_dir / dataset).glob(f"*/{name}.jsonl.gz")):
+        try:
+            with gzip.open(f, "rt", encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        yield json.loads(line)["payload"]
+                    except (json.JSONDecodeError, KeyError):
+                        return
+        except (EOFError, OSError):
+            return
+
+
+def _corp_frame(rows: list[dict], fields: list[str], date_field: str) -> tuple[pl.DataFrame, int]:
+    df = pl.DataFrame(rows, schema={k: (pl.Float64 if k in ("cash_amount", "split_from", "split_to") else pl.Utf8) for k in fields})
     ev = pl.col(date_field).str.to_date()
     kn = pl.coalesce(pl.col("declaration_date").str.to_date(strict=False), ev) if "declaration_date" in fields else ev
     df = df.with_columns(
         event_ts=ev.cast(pl.Datetime("us")).dt.replace_time_zone("America/New_York").dt.convert_time_zone("UTC"),
         known_ts=(kn.cast(pl.Datetime("us")) + pl.duration(hours=9, minutes=30)).dt.replace_time_zone("America/New_York").dt.convert_time_zone("UTC"),
     )
-    df, dropped = lake.drop_holdout(df)
-    lake.write(df, dataset, key=key)
-    log(f"  {dataset}: {df.height} rows (dropped {dropped} known inside the holdout)")
-    return df.height
+    return lake.drop_holdout(df)
+
+
+def _corp_actions(path: str, date_field: str, dataset: str, key: list[str], fields: list[str], log=print,
+                  flush_every: int = 50) -> int:
+    """Paginated corporate actions, written to the lake every `flush_every` pages (bounded memory).
+    Resumable: pages already in the raw archive are replayed from disk and fetching continues from
+    the last archived page's next_url."""
+    s = settings()
+    start = (s.history_start - timedelta(days=60)).isoformat()
+    params = {f"{date_field}.gte": start, f"{date_field}.lt": s.holdout_start.isoformat(), "limit": 1000,
+              "order": "asc", "sort": date_field}
+    name = f"{start}_{s.holdout_start}"
+    arch = RawArchive(dataset, name)
+    rows: list[dict] = []
+    stats = {"n": 0, "pages": 0, "dropped": 0}
+
+    def take(page: dict) -> None:
+        rows.extend({k: r.get(k) for k in fields} for r in page.get("results", []))
+        stats["pages"] += 1
+        if stats["pages"] % flush_every == 0:
+            flush()
+
+    def flush() -> None:
+        if rows:
+            df, dropped = _corp_frame(rows, fields, date_field)
+            lake.write(df, dataset, key=key)
+            stats["n"] += df.height
+            stats["dropped"] += dropped
+            rows.clear()
+            log(f"  {dataset}: {stats['n']} rows written ({stats['pages']} pages)")
+
+    last = None
+    for page in _archived_pages(dataset, name):
+        take(page)
+        last = page
+    if last is not None:
+        log(f"  {dataset}: replayed {stats['pages']} archived pages")
+    if last is None:
+        for page in _pages(path, params, arch):
+            take(page)
+    elif last.get("next_url"):
+        http = _http()
+        nxt = last["next_url"].replace("https://api.massive.com", "")
+        while nxt:
+            page = http.get_json(nxt)
+            arch.append({"path": nxt}, page)
+            take(page)
+            nxt = (page.get("next_url") or "").replace("https://api.massive.com", "") or None
+    flush()
+    log(f"  {dataset}: done, {stats['n']} rows (dropped {stats['dropped']} known inside the holdout)")
+    return stats["n"]
 
 
 def ingest_corporate_actions(log=print) -> None:

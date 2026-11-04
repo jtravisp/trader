@@ -83,8 +83,9 @@ def universe_config() -> dict:
 
 
 def secret(name: str, required: bool = True) -> str:
-    """Read a secret from the environment / .env. Never log the return value."""
-    load_dotenv(ROOT / ".env", override=False)
+    """Read a secret from .env (authoritative: it overrides stale copies in the Windows user
+    environment, which scheduled tasks inherit), else the environment. Never log the return value."""
+    load_dotenv(ROOT / ".env", override=True)
     val = os.environ.get(name, "").strip().strip('"')
     if required and not val:
         raise RuntimeError(f"Missing required secret {name} in .env")

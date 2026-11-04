@@ -42,8 +42,10 @@ def _fetch(symbols: Sequence[str], timeframe: str, start: date, end: date, adjus
         "symbols": ",".join(symbols),
         "timeframe": timeframe,
         "start": _iso(start),
-        # Alpaca's end is inclusive: stop one second before midnight NY of the exclusive end date
-        "end": (datetime.combine(end, datetime.min.time(), NY) - timedelta(seconds=1)).isoformat(),
+        # Alpaca's end is inclusive: stop one second before midnight NY of the exclusive end date;
+        # the free-tier SIP feed also rejects any window reaching into the last 15 minutes
+        "end": min(datetime.combine(end, datetime.min.time(), NY) - timedelta(seconds=1),
+                   datetime.now(NY) - timedelta(minutes=16)).isoformat(),
         "limit": 10000,
         "adjustment": adjustment,
         "feed": "sip",
