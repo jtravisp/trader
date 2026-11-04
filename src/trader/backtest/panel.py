@@ -24,6 +24,7 @@ class Panel:
     meta: dict = field(default_factory=dict)
     pit_rank: np.ndarray | None = None  # T x N point-in-time liquidity rank (inf = not a member)
     events: np.ndarray | None = None  # T x N bool: an earnings 8-K (Item 2.02) reaction session ends at close t
+    fields: dict = field(default_factory=dict)  # name -> T x N point-in-time matrix (fundamentals, regime)
 
     @property
     def T(self) -> int:
@@ -39,7 +40,8 @@ class Panel:
         return Panel(self.dates[s], self.symbols, self.open[s], self.close[s], self.raw_close[s],
                      self.dollar_volume[s], self.is_etf, self.meta,
                      None if self.pit_rank is None else self.pit_rank[s],
-                     None if self.events is None else self.events[s])
+                     None if self.events is None else self.events[s],
+                     {k: v[s] for k, v in self.fields.items()})
 
     def col(self, symbol: str) -> int:
         return self.symbols.index(symbol)

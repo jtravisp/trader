@@ -67,13 +67,25 @@ def ingest_news(start: str = typer.Option("2015-01-01"), end: str = typer.Option
 
 
 @ingest_app.command("edgar")
-def ingest_edgar(universe: bool = typer.Option(False, help="all CIKs in the Massive listings (PIT universe), filings only")) -> None:
+def ingest_edgar(universe: bool = typer.Option(False, help="all CIKs in the Massive listings (PIT universe), filings only"),
+                 universe_facts: bool = typer.Option(False, help="XBRL company facts for PIT-universe CIKs not yet in the lake")) -> None:
     """EDGAR filings index + XBRL facts for the stock seed (or filings for the whole PIT universe)."""
     from trader.data import edgar
     from trader.universe.build import load_seed
 
-    if universe:
+    if universe_facts:
+        from trader.data import lake
+        from trader.universe.pit import snapshots
 
+        have = set(lake.scan(edgar.FACTS).select("cik").unique().collect()["cik"])
+        ciks = sorted({int(c) for c in snapshots()["cik"].drop_nulls().unique() if str(c).isdigit()} - have)
+        log(f"edgar facts for {len(ciks)} universe CIKs not yet fetched")
+        for i in range(0, len(ciks), 500):  # bounded memory; each batch merges into the lake
+            log(f" batch {i // 500 + 1}/{(len(ciks) + 499) // 500}")
+            edgar.ingest_facts(ciks[i : i + 500], log=log)
+        log("done")
+        return
+    if universe:
         from trader.data import lake
         from trader.universe.pit import snapshots
 

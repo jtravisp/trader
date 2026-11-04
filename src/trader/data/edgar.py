@@ -169,6 +169,9 @@ def ingest_facts(ciks: Sequence[int], log=print) -> int:
             frames.append(pl.DataFrame(rows, infer_schema_length=None))
         if (i + 1) % 100 == 0:
             log(f"  facts {i + 1}/{len(ciks)}")
+    if not frames:
+        log("  no XBRL facts in this batch")
+        return 0
     df = pl.concat(frames, how="diagonal_relaxed").with_columns(
         pl.col("start").str.to_date(strict=False), pl.col("end").str.to_date(strict=False),
         pl.col("filed").str.to_date(strict=False), pl.col("fy").cast(pl.Int32, strict=False),

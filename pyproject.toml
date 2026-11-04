@@ -12,6 +12,7 @@ dependencies = [
     "duckdb>=2.0.0",
     "exchange-calendars>=4.13.2",
     "httpx>=0.28.1",
+    "lightgbm>=4.5",
     "matplotlib>=3.11.2",
     "polars>=2.1.0",
     "pyarrow>=26.0.1",
