@@ -27,4 +27,7 @@ daily_budget_usd = 0.14    # ~= 3.0 / 21 trading days
 mode = "paper"
 timezone = "America/New_York"
 # D19: FALLBACK = 100% SPY until a strategy passes the P3 gate. Otherwise a strategy ID from signals.library.
-strategy = "FALLBACK"
+# D26: S03 promoted research -> paper 2026-11-04 (docs/reviews/2026-11-04-S03-paper.md). Runs only from the frozen tag.
+strategy = "S03"
+strategy_tag = "strategy/S03/v1"
+params = { lookback = 126, skip = 21 }
