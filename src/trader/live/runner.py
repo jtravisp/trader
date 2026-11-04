@@ -17,6 +17,33 @@ from trader.config import settings
 from trader.risk import state
 
 FALLBACK = "FALLBACK"
+# promote-strategy: a promoted strategy runs only from code identical to its frozen tag.
+PINNED_PATHS = ("src/trader/signals", "src/trader/backtest/panel.py", "src/trader/live/runner.py",
+                "src/trader/universe/build.py", "config/universe_seed.csv", "config/universe.yaml")
+
+
+def pin_ok(tag: str) -> tuple[bool, str]:
+    """True if the working tree's strategy code equals the frozen tag (committed or not)."""
+    import subprocess
+
+    from trader.config import ROOT
+
+    if not tag:
+        return False, "no strategy_tag configured"
+    git = ["git", "-C", str(ROOT)]
+    try:
+        return _pin_check(git, tag)
+    except OSError as e:  # git not on PATH: fail closed
+        return False, f"git unavailable: {e}"
+
+
+def _pin_check(git: list[str], tag: str) -> tuple[bool, str]:
+    import subprocess
+
+    if subprocess.run([*git, "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], capture_output=True).returncode:
+        return False, f"tag {tag} not found"
+    d = subprocess.run([*git, "diff", "--quiet", tag, "--", *PINNED_PATHS], capture_output=True)
+    return (d.returncode == 0, "ok" if d.returncode == 0 else f"strategy code differs from {tag}")
 
 
 def last_closed_session() -> datetime.date:
@@ -63,6 +90,14 @@ def run(log=print) -> str | None:
     if con.execute("SELECT 1 FROM runs WHERE run_id=?", (run_id,)).fetchone():
         log(f"runner: {run_id} already written")
         return run_id
+    if sid != FALLBACK:
+        ok, why = pin_ok(live.get("strategy_tag", ""))
+        if not ok:
+            from trader.monitor.alerts import notify
+
+            notify("critical", f"runner: {sid} not run ({why}); no new target, gateway keeps the last one")
+            log(f"runner: REFUSED {sid}: {why}")
+            return None
     tgt = compute_target(sid, params)
     if tgt is None:
         log(f"runner: {sid} does not rebalance after {d}")
