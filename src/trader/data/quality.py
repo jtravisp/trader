@@ -281,6 +281,25 @@ def check_universe() -> list[Issue]:
     return out
 
 
+def check_delisting() -> list[Issue]:
+    """D24: exits of point-in-time universe members, by category. Warn if more than 40% stay
+    unclassified (they get a 0 delisting return, which flatters loser-buying strategies)."""
+    from trader.universe import pit
+
+    if not lake.exists(pit.PIT):
+        return [Issue("delisting", "_dataset", "universe_pit not built yet", "warn")]
+    p = pit.load_pit_panel()
+    d = pit.delist_classes(p, p.meta["lines"])
+    if d.is_empty():
+        return [Issue("delisting", "_exits", "no exits found", "warn")]
+    counts = dict(d["category"].value_counts().iter_rows())
+    share = counts.get("unclassified", 0) / d.height
+    out = [Issue("delisting", "_summary", f"{d.height} exits: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())), "info")]
+    if share > 0.40:
+        out.append(Issue("delisting", "_unclassified", f"{share:.0%} of exits unclassified (0 return assumed)", "warn"))
+    return out
+
+
 # ---------------------------------------------------------------- runner
 def run_all(sample: int = 20, seed: int = 7, log=print) -> bool:
     issues: list[Issue] = []
@@ -295,7 +314,7 @@ def run_all(sample: int = 20, seed: int = 7, log=print) -> bool:
     else:
         issues.append(Issue("daily", "_dataset", "bars_daily not ingested"))
     log("check: minute, news, edgar, fred")
-    issues += check_minute_coverage() + check_news() + check_edgar() + check_fred() + check_massive() + check_universe()
+    issues += check_minute_coverage() + check_news() + check_edgar() + check_fred() + check_massive() + check_universe() + check_delisting()
     issues = _explain(issues)
     unexplained = [i for i in issues if i.severity == "fail" and not i.explained]
     write_report(issues)
