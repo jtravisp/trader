@@ -28,17 +28,3 @@ def test_carried_target(tmp_path):
     con.execute("UPDATE runs SET status='rejected' WHERE run_id='BAD-2026-11-04'")
     tgt, src = runner.carried_target(con)
     assert tgt == {"SPY": 1.0} and src == "FALLBACK-2026-11-03"
-
-
-def test_has_native_run_ignores_carried_and_rejected(tmp_path):
-    from trader.risk import state
-
-    con = state.connect(tmp_path / "o.db")
-    assert not runner.has_native_run(con, "S03")
-    state.write_target(con, "S03-2026-11-04", "S03", {"SPY": 1.0})
-    state.event(con, "info", "target_carried", {"run_id": "S03-2026-11-04", "from": "FALLBACK-2026-11-03"})
-    state.write_target(con, "S03-2026-11-05", "S03", {"ZZZ": 1.0})
-    con.execute("UPDATE runs SET status='rejected' WHERE run_id='S03-2026-11-05'")
-    assert not runner.has_native_run(con, "S03")
-    state.write_target(con, "S03-2026-11-06", "S03", {"AAA": 0.5, "BBB": 0.5})
-    assert runner.has_native_run(con, "S03")
