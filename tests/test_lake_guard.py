@@ -71,3 +71,22 @@ def test_clip_window(tmp_lake):
     w = lake.clip_window(date(2025, 10, 1), date(2026, 11, 5))
     assert w == [(date(2025, 10, 1), date(2025, 11, 1)), (date(2026, 11, 1), date(2026, 11, 5))]
     assert lake.clip_window(date(2026, 1, 1), date(2026, 2, 1)) == []
+
+
+def test_bar_frames_never_truncate_prices_after_integer_rows(monkeypatch):
+    from datetime import date
+
+    from trader.data import bars
+
+    page = {"bars": {"X": [{"t": f"2020-01-{1 + i % 28:02d}T05:00:00Z", "o": 1, "h": 1, "l": 1, "c": 1, "v": 10, "n": 1, "vw": 1}
+                           for i in range(150)] + [{"t": "2020-02-03T05:00:00Z", "o": 0.97, "h": 1.03, "l": 0.9, "c": 0.97,
+                                                    "v": 10, "n": 1, "vw": 0.98}]}}
+    monkeypatch.setattr(bars, "paginate", lambda *a, **k: iter([page]))
+    monkeypatch.setattr(bars, "alpaca_data", lambda: None)
+
+    class A:
+        def append(self, *a):
+            pass
+
+    df = bars._fetch(["X"], "1Day", date(2020, 1, 1), date(2020, 3, 1), "raw", A())
+    assert df["c"].to_list()[-1] == 0.97

@@ -57,7 +57,9 @@ def _fetch(symbols: Sequence[str], timeframe: str, start: date, end: date, adjus
                 rows.append({"symbol": sym, **b})
     if not rows:
         return pl.DataFrame()
-    return pl.DataFrame(rows).with_columns(
+    # Infer types from ALL rows: Alpaca sends whole-number prices as JSON ints (1 rather than 1.0), and
+    # inferring from the first 100 rows typed price columns as integers and truncated later decimals.
+    return pl.DataFrame(rows, infer_schema_length=None).with_columns(
         pl.col("t").str.to_datetime(time_zone="UTC", time_unit="us").alias("t")
     )
 

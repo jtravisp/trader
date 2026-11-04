@@ -121,10 +121,25 @@ def missing_bar_symbols(lines: pl.DataFrame) -> list[str]:
     return sorted(set(lines["ticker"]) - have)
 
 
+MARGIN = timedelta(days=35)  # month-end snapshots: a listing starts/ends up to ~1 month around them
+
+
+def window_bars(lines: pl.DataFrame, cols: list[str]) -> pl.DataFrame:
+    """Each ticker's bars clipped to its listing window +/- MARGIN (D25). Bars outside it belong to
+    another security or owner, or to a period when this line wasn't listed common stock. A listing
+    that starts at START keeps its earlier history; one still listed at the last snapshot is open-ended."""
+    last_snap = lines["last_snapshot"].max()
+    w = lines.select("ticker", "first_snapshot", "last_snapshot").with_columns(
+        lo=pl.when(pl.col("first_snapshot") <= START).then(None).otherwise(pl.col("first_snapshot") - MARGIN),
+        hi=pl.when(pl.col("last_snapshot") >= last_snap).then(None).otherwise(pl.col("last_snapshot") + MARGIN),
+    )
+    b = lake.scan(bars.DAILY).filter(pl.col("symbol").is_in(lines["ticker"].to_list())).select("symbol", "date", *cols).collect()
+    b = b.join(w.select("ticker", "lo", "hi"), left_on="symbol", right_on="ticker", how="inner")
+    return b.filter((pl.col("lo").is_null() | (pl.col("date") >= pl.col("lo"))) & (pl.col("hi").is_null() | (pl.col("date") <= pl.col("hi")))).drop("lo", "hi")
+
+
 def rank_universe(lines: pl.DataFrame, t: pl.DataFrame, n: int = 1000, window: int = 60, min_price: float = 5.0) -> pl.DataFrame:
-    b = lake.scan(bars.DAILY).filter(pl.col("symbol").is_in(lines["ticker"].to_list())).select(
-        "symbol", "date", "close", "volume"
-    ).collect().with_columns((pl.col("close") * pl.col("volume")).alias("dv"))
+    b = window_bars(lines, ["close", "volume"]).with_columns((pl.col("close") * pl.col("volume")).alias("dv"))
     tick_line = dict(zip(lines["ticker"], lines["line_id"], strict=True))
     out = []
     sess = calendar.sessions(START - timedelta(days=120), settings().holdout_start)
@@ -171,14 +186,14 @@ def build(log=print, fetch: bool = True) -> pl.DataFrame:
         log(f"fetching Alpaca daily bars for {len(miss)} symbols not yet in the lake")
         bars.ingest_daily(miss, log=log)
     chk = bar_consistency(lines)
-    bad = set(chk.filter(pl.col("early") | pl.col("late"))["ticker"])
+    out_of_window = chk.filter(pl.col("early") | pl.col("late")).height
     nobars = set(chk.filter(pl.col("n").is_null())["ticker"])
-    log(f"bar consistency: {len(bad)} tickers with bars far outside their listing window (dropped), {len(nobars)} without Alpaca bars")
-    lines = lines.filter(~pl.col("ticker").is_in(list(bad)))
+    log(f"bar consistency: {out_of_window} tickers have bars far outside their listing window (clipped to it, D25), "
+        f"{len(nobars)} without Alpaca bars")
     ev = pl.col("first_snapshot").cast(pl.Datetime("us")).dt.replace_time_zone("America/New_York").dt.convert_time_zone("UTC")
-    lake.write(lines.with_columns(event_ts=ev, known_ts=ev), LINES, key=["ticker"])
+    lake.replace(lines.with_columns(event_ts=ev, known_ts=ev), LINES, key=["ticker"])
     pit = rank_universe(lines, t)
-    lake.write(pit, PIT, key=["snapshot", "line_id"])
+    lake.replace(pit, PIT, key=["snapshot", "line_id"])
     log(f"universe_pit: {pit['snapshot'].n_unique()} snapshots x top {pit['rank'].max()}")
     return pit
 
@@ -199,9 +214,12 @@ def load_pit_panel(max_rank: int = 1000):
         pl.col("ticker"), pl.col("ticker").last().alias("name")
     )
     prio = {t: (lid, i) for lid, ts in zip(order["line_id"], order["ticker"], strict=True) for i, t in enumerate(ts)}
-    tick = list(prio) + etf_list()
-    b = lake.scan(bars.DAILY).filter(pl.col("symbol").is_in(tick)).select(
-        "symbol", "date", "adj_open", "adj_close", "close", "volume").collect()
+    cols = ["adj_open", "adj_close", "close", "volume"]
+    etfs = etf_list()
+    b = pl.concat([
+        window_bars(lines.filter(pl.col("ticker").is_in(list(prio))), cols),
+        lake.scan(bars.DAILY).filter(pl.col("symbol").is_in(etfs)).select("symbol", "date", *cols).collect(),
+    ])
     names = dict(zip(order["line_id"], order["name"], strict=True))
     b = b.with_columns(
         line=pl.col("symbol").replace_strict({t: v[0] for t, v in prio.items()}, default=pl.lit("ETF:") + pl.col("symbol")),

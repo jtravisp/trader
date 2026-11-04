@@ -59,7 +59,7 @@ def compare(symbols: list[str] | None = None, log=print) -> pl.DataFrame:
         lf = lf.filter(pl.col("symbol").is_in(symbols))
     raw = lf.collect()
     ev = events(raw, lake.scan(massive.SPLITS).collect(), lake.scan(massive.DIVIDENDS).collect())
-    a = adjusted(raw, ev).with_columns(
+    a = adjusted(raw, ev).filter((pl.col("adj_close") > 0) & (pl.col("m_adj_close") > 0)).with_columns(
         r=(pl.col("m_adj_close") / pl.col("adj_close")).log()
     ).with_columns(r=pl.col("r") - pl.col("r").sort_by("date").last().over("symbol"))
     res = a.group_by("symbol").agg(

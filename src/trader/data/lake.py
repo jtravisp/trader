@@ -115,6 +115,22 @@ def write(
     return out
 
 
+DERIVED = {"universe_lines", "universe_pit"}  # rebuilt from other datasets; safe to replace wholesale
+
+
+def replace(df: pl.DataFrame, dataset: str, key: Sequence[str]) -> int:
+    """Drop and rewrite a derived dataset (a rebuild must not leave stale rows behind). Refuses
+    source datasets, which are only ever upserted."""
+    import shutil
+
+    if dataset not in DERIVED:
+        raise ValueError(f"{dataset} is not a derived dataset; use write()")
+    d = dataset_dir(dataset)
+    if d.exists():
+        shutil.rmtree(d)
+    return write(df, dataset, key)
+
+
 def scan(
     dataset: str,
     *,

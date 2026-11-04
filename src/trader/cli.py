@@ -34,12 +34,15 @@ def universe() -> None:
 
 
 @ingest_app.command("bars")
-def ingest_bars(start: str = typer.Option(None), end: str = typer.Option(None)) -> None:
-    """Daily bars (raw + adjusted) for the ETF list and the stock seed."""
-    from trader.data import bars
+def ingest_bars(start: str = typer.Option(None), end: str = typer.Option(None),
+                all_lake: bool = typer.Option(False, help="re-fetch every symbol already in the lake (upsert)")) -> None:
+    """Daily bars (raw + adjusted) for the ETF list and the stock seed (or everything in the lake)."""
+    from trader.data import bars, lake
     from trader.universe.build import etf_list, load_seed
 
     syms = etf_list() + load_seed()["symbol"].to_list()
+    if all_lake:
+        syms = sorted(set(syms) | set(lake.scan(bars.DAILY).select("symbol").unique().collect()["symbol"]))
     log(f"daily bars for {len(syms)} symbols")
     n = bars.ingest_daily(syms, _d(start), _d(end), log=log)
     log(f"done: {n} rows")
@@ -152,9 +155,11 @@ def survivorship() -> None:
 @app.command()
 def adjustments() -> None:
     """P3: rebuild adjustment factors from Massive splits/dividends and compare with Alpaca's."""
-    from trader.data import adjust
+    from trader.data import adjust, lake
+    from trader.universe import pit
 
-    adjust.compare(log=log)
+    syms = lake.scan(pit.PIT).select("ticker").unique().collect()["ticker"].to_list() if lake.exists(pit.PIT) else None
+    adjust.compare(symbols=syms, log=log)  # tickers that were ever universe members
 
 
 @app.command("build-universe")
