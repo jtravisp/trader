@@ -75,16 +75,37 @@ def submissions(cik: int) -> dict | None:
     return _cached_json("sec_submissions", f"CIK{cik:010d}", "https://data.sec.gov", f"/submissions/CIK{cik:010d}.json")
 
 
+REF_SCHEMA = {"cik": pl.Int64, "entity_type": pl.Utf8, "sic": pl.Utf8, "sec_name": pl.Utf8, "sec_names": pl.Utf8}
+
+
 def company_meta(ciks: Sequence[int], log=print) -> pl.DataFrame:
     rows = []
     for i, cik in enumerate(ciks):
         sub = submissions(int(cik))
         if sub is None:
             continue
-        rows.append({"cik": int(cik), "entity_type": sub.get("entityType"), "sic": str(sub.get("sic") or ""), "sec_name": sub.get("name")})
+        former = [f.get("name") for f in (sub.get("formerNames") or []) if f.get("name")]
+        rows.append({"cik": int(cik), "entity_type": sub.get("entityType"), "sic": str(sub.get("sic") or ""), "sec_name": sub.get("name"),
+                     "sec_names": "|".join([sub.get("name") or "", *former])})
         if (i + 1) % 250 == 0:
             log(f"  sec submissions {i + 1}/{len(ciks)}")
-    return pl.DataFrame(rows, schema={"cik": pl.Int64, "entity_type": pl.Utf8, "sic": pl.Utf8, "sec_name": pl.Utf8})
+    return pl.DataFrame(rows, schema=REF_SCHEMA)
+
+
+def company_reference(ciks: Sequence[int], log=print) -> pl.DataFrame:
+    """Current SEC company metadata (entity type, SIC, name) kept at data/reference/edgar_company.parquet;
+    only CIKs not yet saved are read. Reference data for classification, not a point-in-time series."""
+    path = settings().raw_dir.parent / "reference" / "edgar_company.parquet"
+    have = pl.read_parquet(path) if path.exists() else pl.DataFrame(schema=REF_SCHEMA)
+    if "sec_names" not in have.columns:  # older file: re-read everything (submissions are cached per day)
+        have = pl.DataFrame(schema=REF_SCHEMA)
+    miss = sorted(set(int(c) for c in ciks) - set(have["cik"]))
+    if miss:
+        log(f"  company reference: reading {len(miss)} CIKs")
+        have = pl.concat([have, company_meta(miss, log=log)]).unique("cik", keep="last")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        have.write_parquet(path)
+    return have.filter(pl.col("cik").is_in([int(c) for c in ciks]))
 
 
 def _acceptance_to_utc(col: str) -> pl.Expr:

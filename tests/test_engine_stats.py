@@ -133,3 +133,17 @@ def test_vol_target_scales_to_target_and_caps_gross():
     assert vol_target(p, w, target_vol=0.50)[300, 0] == pytest.approx(1.0)  # capped at max_gross
     w[10] = 1.0
     assert np.isnan(vol_target(p, w, 0.10)[10, 0])  # not enough history: decision skipped
+
+
+def test_delisting_return_applied_once_on_exit():
+    nan = np.nan
+    o = [[10, 10], [10, 10], [10, 10], [nan, 10], [nan, 10], [nan, 10]]
+    c = [[10, 10], [10, 10], [10, 10], [nan, 10], [nan, 10], [nan, 10]]
+    p = make_panel(o, c)
+    tg = np.full((6, 2), np.nan)
+    tg[0] = [0.5, 0.5]
+    flat = engine.run(p, tg, NOCOST, FREE)
+    assert np.allclose(flat.net, 0)  # default: exit at the last close
+    p2 = Panel(p.dates, p.symbols, p.open, p.close, p.raw_close, p.dollar_volume, p.is_etf, {"delist_ret": {0: -0.5}})
+    r = engine.run(p2, tg, NOCOST, FREE)
+    assert np.isclose(r.net[3], -0.25) and np.allclose(r.net[4:], 0) and np.allclose(r.net[:3], 0)

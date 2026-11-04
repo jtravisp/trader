@@ -100,13 +100,20 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
     nn = np.zeros(T, dtype=int)
     clipped_days = 0
     stale = 0
+    # Delisting returns (D24): a name whose final bar is row L < T-1 gets panel.meta["delist_ret"][j]
+    # on the overnight leg of row L+1 (default 0 = exit at the last close).
+    fin = np.isfinite(c)
+    last = np.where(fin.any(axis=0), T - 1 - np.argmax(fin[::-1], axis=0), -1)
+    dr = np.zeros(panel.N)
+    for j, v in (panel.meta.get("delist_ret") or {}).items():
+        dr[j] = v
     for d in range(1, T):
         # overnight: close d-1 -> open d, on drifted weights
         g = o[d] / c[d - 1] - 1.0
         missing = ~np.isfinite(g)
         if (missing & (w > 0)).any():
-            stale += int((missing & (w > 0)).sum())  # held name stopped trading: exit flat at last close
-        g = np.where(missing, 0.0, g)
+            stale += int((missing & (w > 0)).sum())  # held name stopped trading
+        g = np.where(missing, np.where(last == d - 1, dr, 0.0), g)
         pg = float(w @ g)
         w_open = w * (1 + g) / (1 + pg) if pg > -1 else w
         day_gross = 1 + pg

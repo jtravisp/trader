@@ -28,9 +28,47 @@ EXCHANGES = ["XNYS", "XNAS", "XASE", "ARCX", "BATS", "IEXG"]
 TICKER_RE = r"^[A-Z]{1,5}(\.[A-Z])?$"  # excludes when-issued (…w), units, warrants, preferreds
 
 
-def snapshots() -> pl.DataFrame:
+_STOP = {"inc", "corp", "corporation", "co", "company", "ltd", "plc", "the", "group", "holdings", "holding", "common",
+         "stock", "class", "shares", "ordinary", "sa", "nv", "llc", "lp", "trust", "of", "and", "new", "limited", "de",
+         "incorporated", "international", "american", "depositary", "units", "unit", "warrant", "series", "par", "value"}
+
+
+def _tokens(s: str | None) -> set[str]:
+    import re
+
+    return {w for w in re.findall(r"[a-z0-9]+", (s or "").lower()) if w not in _STOP and len(w) > 1}
+
+
+def names_match(a: set[str], b: set[str]) -> bool:
+    """Any shared token, or one token a prefix of the other (>= 4 chars: QUIDEL / QuidelOrtho)."""
+    return bool(a & b) or any(len(x) >= 4 and len(y) >= 4 and (x.startswith(y) or y.startswith(x)) for x in a for y in b)
+
+
+def invalid_ciks(t: pl.DataFrame, log=print) -> set[str]:
+    """Massive CIKs whose company names never match SEC's current or former names for that CIK
+    (vendor mapping errors, e.g. Bottomline -> a 13F filer); see D24."""
+    from trader.data import edgar
+
+    m = t.drop_nulls("cik").group_by("cik").agg(pl.col("name").unique())
+    ref = edgar.company_reference([int(c) for c in m["cik"] if str(c).isdigit()], log=log)
+    sec = {str(c).zfill(10): _tokens(n.replace("|", " ")) for c, n in zip(ref["cik"], ref["sec_names"].fill_null(""), strict=True)}
+    bad = set()
+    for cik, names in zip(m["cik"], m["name"], strict=True):
+        st = sec.get(str(cik).zfill(10))
+        if st is None:
+            continue
+        if not any(names_match(_tokens(n), st) for n in names if n):
+            bad.add(cik)
+    return bad
+
+
+def snapshots(validate: bool = True) -> pl.DataFrame:
     t = lake.scan(massive.TICKERS).filter(pl.col("snapshot") >= START).collect()
-    return t.filter(pl.col("ticker").str.contains(TICKER_RE) & pl.col("primary_exchange").is_in(EXCHANGES))
+    t = t.filter(pl.col("ticker").str.contains(TICKER_RE) & pl.col("primary_exchange").is_in(EXCHANGES))
+    if validate:
+        bad = invalid_ciks(t, log=lambda *_: None)
+        t = t.with_columns(cik=pl.when(pl.col("cik").is_in(list(bad))).then(None).otherwise(pl.col("cik")))
+    return t
 
 
 def reused_tickers(t: pl.DataFrame, current: pl.DataFrame | None = None) -> set[str]:
@@ -191,7 +229,48 @@ def load_pit_panel(max_rank: int = 1000):
         if cur is not None:
             rank[i] = cur
     return Panel(p.dates, p.symbols, p.open, p.close, p.raw_close, p.dollar_volume, p.is_etf,
-                 {**p.meta, "universe": "pit", "lines": names}, rank, earnings_events(p, names))
+                 {**p.meta, "universe": "pit", "lines": names, "delist_ret": delist_returns(p, names)},
+                 rank, earnings_events(p, names))
+
+
+def delist_classes(p, names: dict[str, str]) -> pl.DataFrame:
+    """Exit classification (universe/delist.py) for every panel column whose bars end early."""
+    import numpy as np
+
+    from trader.data import edgar
+    from trader.universe import delist
+
+    fin = np.isfinite(p.close)
+    last = p.T - 1 - np.argmax(fin[::-1], axis=0)
+    col = {s: j for j, s in enumerate(p.symbols)}
+    rows = []
+    for lid, sym in names.items():
+        j = col.get(sym)
+        if j is None or not fin[:, j].any() or last[j] >= p.T - 1:
+            continue
+        L = int(last[j])
+        k = max(0, L - 120)
+        r120 = p.close[L, j] / p.close[k, j] - 1 if np.isfinite(p.close[k, j]) else None
+        c = lid.rsplit("-", 1)[0]
+        rows.append({"line_id": lid, "col": j, "cik": int(c) if c.isdigit() else None, "ticker": sym,
+                     "exit_date": p.dates[L].astype("O"), "last_close": float(p.raw_close[L, j]), "ret_120": r120})
+    if not rows:
+        return pl.DataFrame()
+    ex = pl.DataFrame(rows, schema_overrides={"cik": pl.Int64, "ret_120": pl.Float64})
+    t = snapshots()
+    meta = t.sort("snapshot").group_by("ticker").agg(pl.col("primary_exchange").last().alias("exchange"), pl.col("name").last())
+    ex = ex.join(meta, on="ticker", how="left")
+    lines = lake.scan(LINES).collect().with_columns(cik=pl.col("cik").cast(pl.Int64, strict=False))
+    cl = lines.drop_nulls("cik").group_by("cik").agg(pl.col("last_snapshot").max().alias("cik_last_listed"))
+    f = lake.scan(edgar.FILINGS).filter(pl.col("cik").is_in(ex["cik"].drop_nulls().to_list())).select(
+        "cik", "form", "items", "filing_date").collect()
+    sic = edgar.company_reference(ex["cik"].drop_nulls().unique().to_list())
+    return delist.classify(ex, f, cl, sic)
+
+
+def delist_returns(p, names: dict[str, str]) -> dict[int, float]:
+    d = delist_classes(p, names)
+    return dict(zip(d["col"].to_list(), d["delist_ret"].to_list(), strict=True)) if d.height else {}
 
 
 def earnings_events(p, names: dict[str, str]):
