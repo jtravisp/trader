@@ -204,3 +204,15 @@ def test_benchmark_fallback_may_be_fully_invested_over_two_days():
     assert not any("clipped" in n for n in plan.notes)  # D19: SPY is not clipped to the 35% ETF cap
     assert sum(o.notional for o in plan.orders) == pytest.approx(600)  # day 1 limited by 60% turnover
     assert not plan.refused and plan.deferred  # throttling is deferred (log only), not a refusal alert
+
+
+def test_drill_dry_run_never_blocks_the_real_run(env):
+    con, _ = env
+    b = FakeBroker()
+    dry = _run(con, b, "r1", {"SPY": 0.30, "TLT": 0.30}, dry=True)
+    assert dry.status == "dry_run" and not b.orders
+    assert con.execute("SELECT status FROM runs WHERE run_id='r1'").fetchone()[0] == "target_written"
+    real = _run(con, b, "r1", None)
+    assert real.status == "executed" and real.submitted > 0
+    assert len(b.orders) == real.submitted and len({o.client_order_id for o in b.orders}) == len(b.orders)
+    assert _run(con, b, "r1", None).status == "already_executed"

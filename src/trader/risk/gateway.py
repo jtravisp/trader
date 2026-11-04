@@ -203,6 +203,18 @@ def reconcile(con: sqlite3.Connection, broker: Broker, session: str, since_iso: 
     return problems
 
 
+def preview(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str], etfs: set[str], lim: dict) -> Plan:
+    """Read-only plan for a target with the current account (ignores the trading window). Writes nothing,
+    submits nothing; the real run re-plans at execution time with live state."""
+    target, plan = validate_target(state.read_target(con, run_id), allowlist, lim)
+    since = datetime.combine(datetime.now(NY).date(), time(0), NY).isoformat()
+    row = con.execute(
+        "SELECT COUNT(*), COALESCE(SUM(notional),0) FROM orders WHERE intended_at >= ? AND status NOT IN ('not_submitted','rejected','error','dry_run')",
+        (since,),
+    ).fetchone()
+    return plan_orders(target, broker.account(), broker.positions(), etfs, lim, int(row[0]), float(row[1]), False, plan)
+
+
 def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str], etfs: set[str], lim: dict,
         now: datetime, dry_run: bool = True) -> RunResult:
     session = now.astimezone(NY).date().isoformat()
@@ -222,7 +234,7 @@ def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str
         return RunResult("halted", notes=problems)
 
     done = con.execute("SELECT status FROM runs WHERE run_id=?", (run_id,)).fetchone()
-    if done and done[0] in ("executed", "dry_run"):
+    if done and done[0] == "executed":  # a dry run never blocks the real run
         return RunResult("already_executed")
 
     try:
@@ -265,7 +277,7 @@ def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str
         cid = po.client_order_id(run_id)
         notional = po.notional if po.notional is not None else pos[po.symbol].market_value
         exists = con.execute("SELECT status FROM orders WHERE client_order_id=?", (cid,)).fetchone()
-        if exists and exists[0] not in ("not_submitted",):
+        if exists and exists[0] not in ("not_submitted", "dry_run"):
             continue  # idempotent: this exact order was already sent
         con.execute("INSERT OR REPLACE INTO orders VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (cid, run_id, po.symbol, po.side, notional, po.qty, state.now_iso(), None,
@@ -285,8 +297,11 @@ def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str
             _alert(con, "error", "submit_failed", f"{po.symbol} {po.side}: {str(e)[:200]} (will reconcile)")
         con.commit()
     status = "dry_run" if dry_run else ("incomplete" if unknown else "executed")
-    con.execute("UPDATE runs SET status=?, detail=? WHERE run_id=?",
-                (status, f"{len(plan.orders)} orders, {len(plan.refused)} refused, {unknown} unconfirmed", run_id))
+    if dry_run:  # leave the run pending so the scheduled run still executes it
+        state.event(con, "info", "dry_run", f"{run_id}: {len(plan.orders)} orders planned, {len(plan.refused)} refused")
+    else:
+        con.execute("UPDATE runs SET status=?, detail=? WHERE run_id=?",
+                    (status, f"{len(plan.orders)} orders, {len(plan.refused)} refused, {unknown} unconfirmed", run_id))
     con.commit()
     return RunResult(status, submitted, refused=plan.refused, deferred=plan.deferred, notes=plan.notes)
 

@@ -270,6 +270,35 @@ def live_target() -> None:
     runner.run(log=log)
 
 
+@gw_app.command("preview")
+def live_preview(run_id: str = typer.Option("", help="default: latest pending run")) -> None:
+    """Read-only: the orders the gateway would plan now for the pending target (any time of day)."""
+    from trader.config import limits
+    from trader.risk import gateway, state
+    from trader.universe.build import etf_list, load_seed
+
+    con = state.connect()
+    if not run_id:
+        row = con.execute("SELECT run_id FROM runs WHERE status IN ('target_written','incomplete') ORDER BY created_at DESC LIMIT 1").fetchone()
+        if not row:
+            log("no pending target")
+            return
+        run_id = row[0]
+    br = _broker()
+    acct = br.account()
+    allow = set(etf_list()) | set(load_seed()["symbol"].to_list())
+    plan = gateway.preview(run_id, br, con, allow, set(etf_list()), limits())
+    log(f"preview {run_id}: equity ${acct.equity:,.2f}, cash ${acct.cash:,.2f}, buying power ${acct.buying_power:,.2f}")
+    for o in plan.orders:
+        log(f"  {o.side} {o.symbol} " + (f"${o.notional:,.2f}" if o.notional is not None else f"qty {o.qty}") + f" (chunk {o.chunk})")
+    for sym, why in plan.deferred:
+        log(f"  deferred {sym}: {why}")
+    for sym, why in plan.refused:
+        log(f"  refused {sym}: {why}")
+    for n in plan.notes:
+        log(f"  note: {n}")
+
+
 @gw_app.command("execute")
 def live_execute(run_id: str = typer.Option("", help="default: latest pending run"),
                  submit: bool = typer.Option(False, help="actually send orders (otherwise dry run)")) -> None:
