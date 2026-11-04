@@ -30,6 +30,10 @@ MAX_TOKENS = 600
 # USD per million tokens, standard tier (platform.claude.com pricing, fetched 2026-11-03).
 PRICES = {"claude-haiku-5-5": (0.10, 0.50)}
 BATCH_DISCOUNT = 0.5
+# Prompt caching of the static system prompt (Haiku 5.5 minimum cacheable prefix: 512 tokens).
+# 1-hour TTL because batch requests are processed in any order over minutes to hours.
+# Multipliers on the input price: write 2.0x (1h TTL), read 0.1x. Batch discount stacks.
+CACHE_WRITE_MULT, CACHE_READ_MULT = 2.0, 0.1
 
 
 def db_path() -> Path:
@@ -55,6 +59,10 @@ def connect() -> sqlite3.Connection:
             PRIMARY KEY (batch_id, doc_id));
         """
     )
+    cols = {r[1] for r in con.execute("PRAGMA table_info(scores)")}
+    for c in ("cache_read_tokens", "cache_write_tokens"):
+        if c not in cols:
+            con.execute(f"ALTER TABLE scores ADD COLUMN {c} INTEGER")
     return con
 
 
@@ -63,9 +71,10 @@ def client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=secret("TRADER_ANTHROPIC_API_KEY"))
 
 
-def cost(model: str, in_tok: int, out_tok: int, batch: bool = True) -> float:
+def cost(model: str, in_tok: int, out_tok: int, batch: bool = True, cache_write: int = 0, cache_read: int = 0) -> float:
+    """in_tok = uncached input tokens (usage.input_tokens); cache tokens are billed separately."""
     pin, pout = PRICES[model]
-    c = (in_tok * pin + out_tok * pout) / 1e6
+    c = ((in_tok + cache_write * CACHE_WRITE_MULT + cache_read * CACHE_READ_MULT) * pin + out_tok * pout) / 1e6
     return c * (BATCH_DISCOUNT if batch else 1.0)
 
 
@@ -74,9 +83,21 @@ SYS_TOKENS = 1150
 OUT_TOKENS = 120  # margin over the measured 86
 
 
-def estimate_cost(model: str, items: Sequence[dict]) -> float:
-    in_tok = sum(SYS_TOKENS + len(prompt.user_message(i)) / 3.0 for i in items)
-    return cost(model, int(in_tok), OUT_TOKENS * len(items))
+def estimate_cost(model: str, items: Sequence[dict], hit_rate: float = 0.0) -> float:
+    """Conservative: a cache miss is billed as a 2x write. hit_rate comes from measured batches."""
+    n = len(items)
+    user = int(sum(len(prompt.user_message(i)) / 3.0 for i in items))
+    reads = int(SYS_TOKENS * n * hit_rate)
+    writes = SYS_TOKENS * n - reads
+    return cost(model, user, OUT_TOKENS * n, cache_write=writes, cache_read=reads)
+
+
+def cache_hit_rate(con: sqlite3.Connection, last: int = 2000) -> float:
+    """Share of recent scored requests whose system prompt was read from cache (0 until measured)."""
+    row = con.execute(
+        "SELECT AVG(CASE WHEN cache_read_tokens > 0 THEN 1.0 ELSE 0.0 END), COUNT(*) FROM (SELECT cache_read_tokens FROM scores "
+        "WHERE cache_read_tokens IS NOT NULL AND result_type='succeeded' ORDER BY scored_at DESC LIMIT ?)", (last,)).fetchone()
+    return float(row[0]) * 0.9 if row and row[1] >= 50 else 0.0  # 10% haircut: batch caching is best-effort
 
 
 def spent(con: sqlite3.Connection, since: datetime) -> float:
@@ -106,7 +127,7 @@ def _request(model: str, item: dict) -> Request:
             # Classification route: thinking off (Haiku 5.5 allows it at effort <= high), low effort.
             thinking={"type": "disabled"},
             output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema.json_schema()}},
-            system=prompt.SYSTEM,
+            system=[{"type": "text", "text": prompt.SYSTEM, "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
             messages=[{"role": "user", "content": prompt.user_message(item)}],
         ),
     )
@@ -131,7 +152,8 @@ def submit(items: list[dict], log=print) -> str | None:
         s.llm_monthly_budget_usd - spent(con, month_start),
         float(s.raw["llm"].get("daily_budget_usd", 0.14)) - spent(con, day_start),
     )
-    per_item = estimate_cost(model, todo[:200]) / min(len(todo), 200)
+    hit = cache_hit_rate(con)
+    per_item = estimate_cost(model, todo[:200], hit) / min(len(todo), 200)
     n_fit = int(max(room, 0) / per_item) if per_item > 0 else 0
     if n_fit <= 0:
         log(f"llm: BUDGET EXHAUSTED (room ${room:.4f}); {len(todo)} items left unscored")
@@ -139,7 +161,7 @@ def submit(items: list[dict], log=print) -> str | None:
     if n_fit < len(todo):
         log(f"llm: budget allows {n_fit}/{len(todo)} items; scoring newest first")
         todo = sorted(todo, key=lambda i: i["created_at"], reverse=True)[:n_fit]
-    est = estimate_cost(model, todo)
+    est = estimate_cost(model, todo, hit)
     batch = client().messages.batches.create(requests=[_request(model, i) for i in todo])
     con.execute(
         "INSERT INTO batches VALUES (?,?,?,?,?,?,?,?,?)",
@@ -170,11 +192,13 @@ def collect(log=print) -> int:
         for res in cl.messages.batches.results(bid):
             doc_id = int(res.custom_id[1:])
             allowed, created_at = pend.get(doc_id, (set(), None))
-            raw, valid, it, ot, c = None, 0, 0, 0, 0.0
+            raw, valid, it, ot, c, cr, cw = None, 0, 0, 0, 0.0, None, None
             if res.result.type == "succeeded":
                 msg = res.result.message
                 it, ot = msg.usage.input_tokens, msg.usage.output_tokens
-                c = cost(model, it, ot)
+                cr = getattr(msg.usage, "cache_read_input_tokens", None) or 0
+                cw = getattr(msg.usage, "cache_creation_input_tokens", None) or 0
+                c = cost(model, it, ot, cache_write=cw, cache_read=cr)
                 raw = next((blk.text for blk in msg.content if blk.type == "text"), None)
                 parsed = schema.parse(raw, allowed) if (raw and msg.stop_reason == "end_turn") else None
                 if parsed is not None:
@@ -189,8 +213,10 @@ def collect(log=print) -> int:
                             "event_ts": created_at, "known_ts": scored_at,
                         })
             batch_cost += c
-            rows.append((model, pv, doc_id, bid, created_at, scored_at, valid, res.result.type, raw, it, ot, c))
-        con.executemany("INSERT OR REPLACE INTO scores VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+            rows.append((model, pv, doc_id, bid, created_at, scored_at, valid, res.result.type, raw, it, ot, c, cr, cw))
+        con.executemany(
+            "INSERT OR REPLACE INTO scores (model, prompt_version, doc_id, batch_id, created_at, scored_at, valid, result_type, "
+            "raw, input_tokens, output_tokens, cost_usd, cache_read_tokens, cache_write_tokens) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
         con.execute("UPDATE batches SET status='ended', ended_at=?, cost_usd=? WHERE batch_id=?", (scored_at, batch_cost, bid))
         con.commit()
         if lake_rows:
@@ -213,8 +239,10 @@ def smoke_test(log=print) -> bool:
     msg = client().messages.create(**p)
     raw = next((b.text for b in msg.content if b.type == "text"), "")
     parsed = schema.parse(raw, {"AAPL"})
-    log(f"stop_reason={msg.stop_reason} usage in={msg.usage.input_tokens} out={msg.usage.output_tokens} "
-        f"cost=${cost(s.scoring_model, msg.usage.input_tokens, msg.usage.output_tokens, batch=False):.6f}")
+    u = msg.usage
+    cr, cw = getattr(u, "cache_read_input_tokens", 0) or 0, getattr(u, "cache_creation_input_tokens", 0) or 0
+    log(f"stop_reason={msg.stop_reason} usage in={u.input_tokens} out={u.output_tokens} cache_read={cr} cache_write={cw} "
+        f"cost=${cost(s.scoring_model, u.input_tokens, u.output_tokens, batch=False, cache_write=cw, cache_read=cr):.6f}")
     log(f"raw: {raw}")
     log("parsed OK" if parsed else "PARSE FAILED")
     return parsed is not None
