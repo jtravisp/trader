@@ -84,8 +84,13 @@ def apply_constraints(w: np.ndarray, is_etf: np.ndarray, c: Constraints) -> tupl
     return w, clipped
 
 
-def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, delay: int = 0) -> Result:
-    """targets: T x N; a row of all-NaN means "no rebalance decided at this close"."""
+def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, delay: int = 0,
+        stop: float | None = None, low: np.ndarray | None = None) -> Result:
+    """targets: T x N; a row of all-NaN means "no rebalance decided at this close".
+    stop (S08): a held name whose session low reaches entry*(1-stop) exits at min(open, that level)
+    and stays out until the next decided target; entry = the open it was bought at."""
+    if stop is not None and low is None:
+        raise ValueError("stop-loss simulation needs the low matrix (panel.fields['low'])")
     T, N = panel.T, panel.N
     assert targets.shape == (T, N)
     o, c = panel.open, panel.close
@@ -109,6 +114,7 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
     for j, v in (panel.meta.get("delist_ret") or {}).items():
         dr[j] = v
     name_pnl = np.zeros(panel.N)
+    entry = np.full(N, np.nan)
     for d in range(1, T):
         # overnight: close d-1 -> open d, on drifted weights
         g = o[d] / c[d - 1] - 1.0
@@ -141,15 +147,33 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
             turn[d] = float(np.abs(trade).sum()) / 2.0
             cst[d] = cost
             day_net *= 1 - cost
+            if stop is not None:
+                entry = np.where((w_open - trade <= 1e-12) & (w_open > 1e-12), o[d], entry)
 
         # intraday: open d -> close d, on post-trade weights
         r = c[d] / o[d] - 1.0
         r = np.where(np.isfinite(r), r, 0.0)
+        hit = np.zeros(N, dtype=bool)
+        if stop is not None:
+            lvl = entry * (1 - stop)
+            held = (w_open > 1e-12) & np.isfinite(lvl) & np.isfinite(o[d])
+            at_open = held & (o[d] <= lvl)
+            intra = held & ~at_open & np.isfinite(low[d]) & (low[d] <= lvl)
+            r = np.where(at_open, 0.0, np.where(intra, lvl / o[d] - 1.0, r))
+            hit = at_open | intra
         pr = float(w_open @ r)
         name_pnl += w_open * r * (1 + pg)
         w = w_open * (1 + r) / (1 + pr) if pr > -1 else w_open
         day_gross *= 1 + pr
         day_net *= 1 + pr
+        if hit.any():  # stopped out: sell into cash at the stop fill, pay the exit cost
+            out = w * hit
+            xc = float(out @ side) + float(out.sum()) * SEC_FEE_BPS_ON_SELLS / 1e4
+            day_net *= 1 - xc
+            cst[d] += xc
+            turn[d] += float(out.sum()) / 2.0
+            w = np.where(hit, 0.0, w)
+            entry = np.where(hit, np.nan, entry)
         net[d] = day_net - 1
         gross[d] = day_gross - 1
         expo[d] = float(w.sum())

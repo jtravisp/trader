@@ -11,6 +11,7 @@ from trader.backtest import engine
 from trader.backtest.panel import Panel, load_panel
 from trader.research import metrics, registry, stats
 from trader.signals.library import REGISTRY
+from trader.research import overlays  # noqa: E402,F401  (registers research-only S07/S08 into REGISTRY)
 
 
 @dataclass
@@ -60,7 +61,9 @@ def run_one(strategy_id: str, params: dict, cost_mult: float = 1.0, delay: int =
         leak = engine.truncation_leak_check(strat, p)
     tg = strat.targets(p)
     cons = engine.Constraints.from_limits() if constraints == "limits" else engine.Constraints.none()
-    res = engine.run(p, tg, engine.CostModel.from_settings(cost_mult), cons, delay=delay)
+    stop = getattr(strat, "stop_loss", None)
+    res = engine.run(p, tg, engine.CostModel.from_settings(cost_mult), cons, delay=delay,
+                     stop=stop, low=p.fields.get("low") if stop is not None else None)
     # evaluate from the first day the strategy is invested (warm-up excluded), same window for SPY
     start = int(np.argmax(res.exposure > 0)) if (res.exposure > 0).any() else 0
     sl = slice(start, None)

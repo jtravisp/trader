@@ -214,7 +214,7 @@ def load_pit_panel(max_rank: int = 1000):
         pl.col("ticker"), pl.col("ticker").last().alias("name")
     )
     prio = {t: (lid, i) for lid, ts in zip(order["line_id"], order["ticker"], strict=True) for i, t in enumerate(ts)}
-    cols = ["adj_open", "adj_close", "close", "volume"]
+    cols = ["adj_open", "adj_close", "close", "volume", "adj_low"]
     etfs = etf_list()
     b = pl.concat([
         window_bars(lines.filter(pl.col("ticker").is_in(list(prio))), cols),
@@ -226,7 +226,11 @@ def load_pit_panel(max_rank: int = 1000):
         pri=pl.col("symbol").replace_strict({t: v[1] for t, v in prio.items()}, default=0, return_dtype=pl.Int64),
     ).sort("line", "date", "pri", descending=[False, False, True]).unique(["line", "date"], keep="first", maintain_order=True)
     b = b.with_columns(symbol=pl.col("line").replace_strict(names, default=pl.col("line").str.replace("ETF:", "")))
-    p = panel_from_frame(b.drop("line", "pri"))
+    b = b.drop("line", "pri")
+    p = panel_from_frame(b)
+    lw = b.pivot(on="symbol", index="date", values="adj_low").sort("date")
+    low = lw.select(p.symbols).to_numpy().astype(float)  # S08 stop-loss simulation (fields["low"])
+    del lw
     # membership matrix
     col = {s: j for j, s in enumerate(p.symbols)}
     snaps = sorted(pit["snapshot"].unique().to_list())
@@ -248,7 +252,7 @@ def load_pit_panel(max_rank: int = 1000):
             rank[i] = cur
     return Panel(p.dates, p.symbols, p.open, p.close, p.raw_close, p.dollar_volume, p.is_etf,
                  {**p.meta, "universe": "pit", "lines": names, "delist_ret": delist_returns(p, names)},
-                 rank, earnings_events(p, names))
+                 rank, earnings_events(p, names), {"low": low})
 
 
 def delist_classes(p, names: dict[str, str]) -> pl.DataFrame:
