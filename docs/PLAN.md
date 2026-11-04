@@ -106,7 +106,17 @@ Keep the parameter grids small and pre-declared in `docs/STRATEGIES.md` before r
 
 **Status (2026-11-03):**
 - S01 (ETF trend): **failed** the gate (DSR 0.94, PBO 0.86, Sharpe below SPY). Not a paper-trading candidate as a standalone edge.
-- S02–S04 (stocks): **waiting for the point-in-time universe.** No purchase needed: Massive's free tier supplies the ticker lists and corporate actions, and the backfill is running (about 4 h). Next: build the monthly universe from 2016-10-31 (D20), fetch Alpaca bars for delisted names, handle reused tickers at the entity level, and rebuild the adjustment factors.
+- S02–S04 (stocks): implemented and declared. The data is in place:
+  - Massive listings, splits and dividends (1.6M dividend rows).
+  - EDGAR filings for every universe CIK.
+  - CIK validation and delisting returns (D24).
+  - Adjustment rebuild code (`trader adjustments`).
+  The point-in-time universe build is running (bars for about 8,800 delisted or missing symbols). Then: adjustment comparison → quality → `trader grid` for S02, S03 and S04 on `universe=pit`.
+- P5/P6 groundwork, built ahead of time:
+  - Feature library: price, event, fundamental (point-in-time XBRL TTM and growth per filing) and FRED regime.
+  - The S05 walk-forward LightGBM ranker, declared (12 trials) and tested on a planted signal.
+  - S06 stage 1, the forward LLM event study, declared, with a single read at 60 sessions.
+  - XBRL facts for the full universe are downloading.
 
 **Gate (per strategy), on in-sample + validation (pre-holdout) data, net of base costs:**
 - Deflated Sharpe probability ≥ 0.95, using the family trial count.
