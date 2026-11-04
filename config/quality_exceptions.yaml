@@ -24,3 +24,24 @@
     Probable. Bunge redomiciled to Switzerland (new issuer) in Nov 2023. Alpaca +5.1% vs Yahoo +3.8%;
     price change plus about a 2.7% dividend gives about 3.9%, so Yahoo looks right.
   action: "P3 rebuild."
+- check: daily_gaps
+  key: "*"
+  reason: >-
+    Two known patterns, reviewed 2026-11-04. (1) A ticker's history ends, then the ticker is reused by a
+    different security that Alpaca files under the same symbol, giving one long gap that usually ends
+    in 2025 (FB, PCLN, ULTI, LMNX, ...). (2) Trading halts and suspensions of days to weeks (GDC, ENSC,
+    ORGO, PHUN, QVCGB, UNAM, AENT, NBIS).
+  action: >-
+    (1) Bars are clipped to each ticker's Massive listing window (D25), so another security's bars never
+    reach the panel. (2) The engine keeps halted positions and can't trade them until prints resume.
+    Re-review if a gap shows up in a seed name or an ETF.
+- check: adjustment_2nd_source
+  key: "SOR:2019"
+  reason: Source Capital, a closed-end fund paying distributions. Alpaca +21.33% vs Yahoo +22.20% (0.9 pt), typical vendor disagreement on distribution treatment.
+  action: "None (CEFs rarely make the top 1000)."
+- check: fred
+  key: "*"
+  reason: >-
+    ICSA, UNRATE and INDPRO end 42-92 days before the holdout start. That matches releases delayed by
+    the October 2025 US federal government shutdown (BLS/DOL), with INDPRO waiting on BLS inputs.
+  action: "None. Features carry the last published value, which is the point-in-time truth."

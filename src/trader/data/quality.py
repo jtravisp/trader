@@ -37,8 +37,13 @@ def _exceptions() -> list[dict]:
 
 
 def _explain(issues: list[Issue]) -> list[Issue]:
+    from trader.universe.build import etf_list, load_seed
+
     exc = _exceptions()
+    core = set(etf_list()) | set(load_seed()["symbol"].to_list())
     for i in issues:
+        if i.check == "daily_gaps" and i.key in core:
+            continue  # gaps in seed names / ETFs are never blanket-explained
         for e in exc:
             if e["check"] == i.check and (e["key"] == i.key or (e["key"].endswith("*") and i.key.startswith(e["key"][:-1]))):
                 i.explained = e["reason"]
@@ -183,8 +188,10 @@ def check_news() -> list[Issue]:
     daily = n.group_by("d").len().collect()
     if daily.is_empty():
         return [Issue("news", "_dataset", "no pre-holdout news in the lake yet")]
+    # coverage is judged from the research start: a few stray older items (2010) predate the feed's coverage
+    lo = max(daily["d"].min(), settings().history_start)
     sess = _expected_sessions().filter(
-        (pl.col("date") >= daily["d"].min()) & (pl.col("date") <= daily["d"].max())
+        (pl.col("date") >= lo) & (pl.col("date") <= daily["d"].max())
     ).select(pl.col("date").alias("d"))
     missing = sess.join(daily, on="d", how="anti")
     thin = daily.join(sess, on="d").filter(pl.col("len") < 50)
