@@ -35,3 +35,12 @@ Notes:
     - Fixed hyperparameters besides the grid: learning_rate 0.03, min_data_in_leaf 500, feature_fraction 0.8, bagging_fraction 0.8 / freq 1, lambda_l2 1.0, seed 0.
     - Every grid point is a registered trial (12).
   - **Gate (P5):** beats the best P3 baseline by a margin that survives the deflated Sharpe at the combined trial count, at 2× costs. Feature importance must also be stable across retrain years.
+- **S06 stage 1, forward event study (declared 2026-11-03, before any score was evaluated; `trader llm-eval`, `src/trader/llm/evaluate.py`):**
+  - **Data:** prompt-v1 Haiku 5.5 scores of forward news (D5/D13: documents after 2026-11-01 only).
+  - **Signal:** direction × magnitude × confidence.
+  - **Entry:** the first session open after the score's known_ts.
+  - **Outcome:** the SPY-relative open-to-open return over h ∈ {1, 5} sessions.
+  - **Primary metric:** the mean daily cross-sectional Spearman IC at h = 5, with a Newey-West (lag 5) t-stat.
+  - **When it is read:** outcome statistics are computed **once**, when 60 entry days have a full 5-day outcome (about early February 2027). Until then the report shows data health only. A `--force` read is logged as forced and doesn't count as the read.
+  - **Stage 2:** the P6 gate is the S05 ablation (best S05 config ± LLM features, ≤ 6 trials) on the same forward window.
+  - **If stage 1 fails:** stage 1 is diagnostic, not a gate. A clearly non-positive IC (t < 0) is still reason enough to drop the LLM from the signal path early.

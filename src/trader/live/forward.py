@@ -81,6 +81,13 @@ def run(day: date, log=print) -> bool:
     except Exception as e:
         rec["llm_error"] = f"{type(e).__name__}: {str(e)[:300]}"
         log(f"llm step failed: {rec['llm_error']}")
+    try:  # S06 stage-1 data health (outcome stats stay hidden until the declared read)
+        from trader.llm import evaluate
+
+        h = evaluate.report(log=log)
+        rec["eval_entry_days_h5"] = h.get("entry_days_with_h5")
+    except Exception as e:  # diagnostics never fail the run
+        log(f"llm eval skipped: {type(e).__name__}: {str(e)[:200]}")
     rec["ok"] = rec["data_ok"] and rec["llm_ok"]
     rec["finished"] = datetime.now(UTC).isoformat()
     RUN_LOG.parent.mkdir(parents=True, exist_ok=True)

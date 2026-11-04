@@ -210,6 +210,14 @@ def backtest(
     runner.full_experiment(strategy, json.loads(params), constraints=constraints, notes=notes, log=log, universe=universe)
 
 
+@app.command("llm-eval")
+def llm_eval(force: bool = typer.Option(False, help="compute outcome stats before the declared sample size (logged as forced)")) -> None:
+    """S06 stage 1: forward event study of LLM scores (data health until the declared read)."""
+    from trader.llm import evaluate
+
+    evaluate.report(force=force, log=log)
+
+
 @app.command()
 def grid(
     strategy: str = typer.Option(..., help="Strategy ID with a declared grid (research/grids.py)"),

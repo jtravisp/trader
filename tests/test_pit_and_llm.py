@@ -52,3 +52,23 @@ def test_consecutive_days():
     assert consecutive(["2026-11-03", "2026-11-04", "2026-11-05"]) == 3
     assert consecutive(["2026-11-01", "2026-11-03", "2026-11-04"]) == 2
     assert consecutive([]) == 0
+
+
+def test_llm_eval_stats():
+    from datetime import date
+
+    import numpy as np
+    import polars as pl
+
+    from trader.llm import evaluate
+
+    rng = np.random.default_rng(0)
+    rows = []
+    for d in range(30):
+        s = rng.normal(size=40)
+        for i in range(40):
+            rows.append({"entry": date(2027, 1, 1 + d % 28), "signal": s[i], "rel5": 0.5 * s[i] + rng.normal(), "rel1": rng.normal()})
+    x = pl.DataFrame(rows)
+    ic5 = evaluate.daily_ic(x, 5)["ic"].to_numpy()
+    assert ic5.mean() > 0.3 and evaluate._hac_t(ic5, 5) > 5
+    assert abs(evaluate._hac_t(evaluate.daily_ic(x, 1)["ic"].to_numpy(), 1)) < 3
