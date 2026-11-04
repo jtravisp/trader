@@ -7,5 +7,8 @@ New-Item -ItemType Directory -Force -Path data\logs | Out-Null
 & "$env:USERPROFILE\.local\bin\uv.exe" run --no-sync trader forward *>> $log
 $fwd = $LASTEXITCODE
 & "$env:USERPROFILE\.local\bin\uv.exe" run --no-sync trader live report *>> $log
-&"$env:USERPROFILE\.local\bin\uv.exe" run --no-sync trader live target *>> $log
-exit $fwd
+$rep = $LASTEXITCODE
+& "$env:USERPROFILE\.local\bin\uv.exe" run --no-sync trader live target *>> $log
+$tgt = $LASTEXITCODE
+# any failing step fails the task (Task Scheduler result) without skipping the later steps
+if ($fwd -ne 0) { exit $fwd } elseif ($tgt -ne 0) { exit $tgt } else { exit $rep }
