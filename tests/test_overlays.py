@@ -68,3 +68,10 @@ def test_vol_scale_caps_at_one_and_scales_down_volatile_rows():
     close2 = close.copy()
     close2[91:] *= 3
     np.testing.assert_allclose(vol_scale(tg, close2, 0.20)[:91], out[:91])
+
+
+def test_s09_every_k_and_worst_decile():
+    from trader.research.fast import every_k
+
+    assert every_k(7, 3).tolist() == [True, False, False, True, False, False, True]
+    assert every_k(3, 1).all()
