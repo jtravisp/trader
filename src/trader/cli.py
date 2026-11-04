@@ -350,6 +350,16 @@ def live_report(day: str = typer.Option(None, help="New York date; default today
     daily.build(_d(day) or datetime.now(NY).date(), _broker(), log=log)
 
 
+@gw_app.command("gate")
+def live_gate() -> None:
+    """P4 gate status (read-only): clean-day streak and execution tracking error vs the bound."""
+    from trader.monitor import daily
+
+    g = daily.gate(daily.read_records())
+    log(f"P4 gate: clean streak {g['clean_streak']}/10; |exec TE| < 10bp on {g['te_within_share']:.0%} of "
+        f"{g['te_days']} non-build-up days -> {'PASS' if g['pass'] else 'not yet'}")
+
+
 @gw_app.command("test-alert")
 def live_test_alert() -> None:
     """Send a test push notification through ntfy."""
