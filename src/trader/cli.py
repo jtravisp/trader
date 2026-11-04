@@ -211,6 +211,23 @@ def backtest(
 
 
 @app.command()
+def grid(
+    strategy: str = typer.Option(..., help="Strategy ID with a declared grid (research/grids.py)"),
+    universe: str = typer.Option("pit", help="pit | seed"),
+    dry_run: bool = typer.Option(False, help="list the points still to run"),
+) -> None:
+    """Run every not-yet-run point of a strategy's declared grid (each: base, 2x costs, +1 delay)."""
+    from trader.research import grids
+
+    if dry_run:
+        done = grids.done(strategy, universe)
+        for p in grids.points(strategy):
+            log(f"  {'done' if p in done else 'todo'} {p}")
+        return
+    grids.run(strategy, universe, log=log)
+
+
+@app.command()
 def sanity(seeds: int = 100, only: str = typer.Option("", help="san01|san02|san03|san04")) -> None:
     """P2 gate: harness sanity tests (registered)."""
     from trader.research import sanity as sn
