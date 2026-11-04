@@ -65,7 +65,9 @@ def memory_panel(symbols: list[str], sessions: int = 300):
     return panel_from_frame(_daily_frame(raw, adj))
 
 
-def compute_target(strategy_id: str, params: dict) -> dict[str, float] | None:
+def compute_target(strategy_id: str, params: dict, latest: bool = False) -> dict[str, float] | None:
+    """Tomorrow's target, or None on a non-rebalance day. latest=True (entry, D28) returns the
+    strategy's most recent scheduled decision instead: the portfolio its backtest holds right now."""
     if strategy_id == FALLBACK:
         return {"SPY": 1.0}
     from trader.signals.library import REGISTRY
@@ -74,9 +76,16 @@ def compute_target(strategy_id: str, params: dict) -> dict[str, float] | None:
     strat = REGISTRY[strategy_id](**params)
     syms = etf_list() + ([] if not strat.stock_universe else load_seed()["symbol"].to_list())
     p = memory_panel(syms)
-    row = strat.targets(p)[-1]
-    if np.all(np.isnan(row)):
-        return None  # not a rebalance day for this strategy
+    tg = strat.targets(p)
+    decided = np.where(~np.all(np.isnan(tg), axis=1))[0]
+    if latest:
+        if not len(decided):
+            return None
+        row = tg[decided[-1]]
+    else:
+        row = tg[-1]
+        if np.all(np.isnan(row)):
+            return None  # not a rebalance day for this strategy
     w = {s: float(x) for s, x in zip(p.symbols, np.nan_to_num(row), strict=True) if x > 1e-6}
     return w or {"$CASH": 1.0}
 
@@ -99,6 +108,15 @@ def run(log=print) -> str | None:
             log(f"runner: REFUSED {sid}: {why}")
             return None
     tgt = compute_target(sid, params)
+    if tgt is None and sid != FALLBACK and not has_native_run(con, sid):
+        # D28 entry: a newly promoted strategy adopts its current scheduled holdings at once instead
+        # of waiting for its next rebalance day.
+        tgt = compute_target(sid, params, latest=True)
+        if tgt is not None:
+            state.write_target(con, run_id, sid, tgt)
+            state.event(con, "info", "target_entry", {"run_id": run_id, "strategy": sid})
+            log(f"runner: {sid} entry: adopted its latest scheduled target as {run_id}: {len(tgt)} names")
+            return run_id
     if tgt is None:
         # Not a rebalance day: carry the latest target forward so the gateway can finish orders it
         # deferred (turnover cap). The backtest reaches the target on rebalance day; min-drift keeps
@@ -108,6 +126,7 @@ def run(log=print) -> str | None:
             log(f"runner: {sid} does not rebalance after {d} and there is no earlier target")
             return None
         state.write_target(con, run_id, sid, tgt)
+        state.event(con, "info", "target_carried", {"run_id": run_id, "from": src})
         log(f"runner: {sid} does not rebalance after {d}; carried {src} forward as {run_id}")
         return run_id
     state.write_target(con, run_id, sid, tgt)
@@ -120,3 +139,12 @@ def carried_target(con) -> tuple[dict[str, float] | None, str | None]:
     if not row:
         return None, None
     return {s: float(w) for s, w in state.read_target(con, row[0])}, row[0]
+
+
+def has_native_run(con, sid: str) -> bool:
+    """True once the strategy has written a target of its own (not one carried from another run)."""
+    import json
+
+    carried = {json.loads(d).get("run_id") for (d,) in con.execute("SELECT detail FROM events WHERE kind='target_carried'")}
+    runs = [r for (r,) in con.execute("SELECT run_id FROM runs WHERE strategy=? AND status != 'rejected'", (sid,))]
+    return any(r not in carried for r in runs)
