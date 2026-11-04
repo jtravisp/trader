@@ -53,6 +53,7 @@ def label(panel: Panel) -> np.ndarray:
 
 class LgbmRanker(Strategy):
     id, family = "S05", "S05"
+    needs_fields = True
 
     def _matrix(self, panel: Panel):
         which = self.params.get("features", "price")

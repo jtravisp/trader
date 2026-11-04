@@ -20,6 +20,7 @@ class Strategy:
     id: str = ""
     family: str = ""
     stock_universe: bool = True  # picks from the (survivorship-biased until P3) stock seed
+    needs_fields: bool = False  # uses Panel.fields (fundamentals/FRED); attached only when True (memory)
 
     def __init__(self, **params) -> None:
         self.params = params

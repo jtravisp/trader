@@ -25,8 +25,12 @@ class Trial:
 _PANELS: dict[str, Panel] = {}
 
 
-def panel(universe: str = "seed") -> Panel:
-    """'seed' = survivorship-biased D14 seed (P2 sanity); 'pit' = point-in-time universe (P3, D20/D21)."""
+def panel(universe: str = "seed", fields: bool = False) -> Panel:
+    """'seed' = survivorship-biased D14 seed (P2 sanity); 'pit' = point-in-time universe (P3, D20/D21).
+    fields=True also attaches fundamentals + FRED matrices (large; only strategies that need them)."""
+    key = f"{universe}+fields" if fields else universe
+    if key in _PANELS:
+        return _PANELS[key]
     if universe not in _PANELS:
         if universe == "pit":
             from trader.universe.pit import load_pit_panel
@@ -34,10 +38,12 @@ def panel(universe: str = "seed") -> Panel:
             _PANELS[universe] = load_pit_panel()
         else:
             _PANELS[universe] = load_panel()
-        from trader.research.fields import attach
+    if not fields:
+        return _PANELS[universe]
+    from trader.research.fields import attach
 
-        _PANELS[universe] = attach(_PANELS[universe])  # fundamentals (PIT lines only) + FRED regime
-    return _PANELS[universe]
+    _PANELS[key] = attach(_PANELS.pop(universe))  # fundamentals (PIT lines only) + FRED regime; reuse the base arrays
+    return _PANELS[key]
 
 
 def spy_returns(p: Panel) -> np.ndarray:
@@ -48,7 +54,7 @@ def spy_returns(p: Panel) -> np.ndarray:
 def run_one(strategy_id: str, params: dict, cost_mult: float = 1.0, delay: int = 0, constraints: str = "limits",
             p: Panel | None = None, leak: tuple[bool, str] | None = None, notes: str = "", family: str | None = None,
             universe: str = "seed") -> Trial:
-    p = p or panel(universe)
+    p = p or panel(universe, REGISTRY[strategy_id].needs_fields)
     strat = REGISTRY[strategy_id](**params)
     if leak is None:
         leak = engine.truncation_leak_check(strat, p)
@@ -74,7 +80,7 @@ def run_one(strategy_id: str, params: dict, cost_mult: float = 1.0, delay: int =
 def full_experiment(strategy_id: str, params: dict, constraints: str = "limits", notes: str = "", log=print,
                     universe: str = "seed") -> str:
     """Base costs, 2x costs and a 1-day-delay check; all registered. Returns the report path."""
-    p = panel(universe)
+    p = panel(universe, REGISTRY[strategy_id].needs_fields)
     strat = REGISTRY[strategy_id](**params)
     leak = engine.truncation_leak_check(strat, p)
     log(f"{strategy_id} {params}: leak check {leak[1]}")
