@@ -109,7 +109,7 @@ Keep the parameter grids small and pre-declared in `docs/STRATEGIES.md` before r
 - **Point-in-time universe built (2026-11-04):** 109 snapshots, top 1000, delisting returns (D24), bars clipped to listing windows (D25). Quality is clean.
 - S02 (reversal) and S04 (earnings drift): **failed**. No alpha after beta.
 - S03 (momentum): **passes the gate as declared**, but it is mostly beta (1.27). CAPM alpha t is 1.6. See RESEARCH.md. It is the best P3 baseline, so it is the candidate for paper trading via `promote-strategy`. Paper trading costs nothing, and it tests the stock path of the live stack.
-- Next: the S05 grid (12 trials). It must beat S03 after beta to matter.
+- S05 (LightGBM ranker): **failed** (best Sharpe 0.76 vs SPY 0.92, PBO 0.69).
 - P5/P6 groundwork, built ahead of time:
   - Feature library: price, event, fundamental (point-in-time XBRL TTM and growth per filing) and FRED regime.
   - The S05 walk-forward LightGBM ranker, declared (12 trials) and tested on a planted signal.
