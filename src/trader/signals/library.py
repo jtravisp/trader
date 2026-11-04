@@ -114,7 +114,44 @@ class EtfTrend(Strategy):
         return vol_target(panel, w, tv, lookback=63)
 
 
+class EarningsDrift(Strategy):
+    """S04: buy names whose SPY-relative reaction to an earnings 8-K (Item 2.02) is >= threshold
+    sigma; hold `hold` sessions; weight 1/max(n_active, 10). See STRATEGIES.md."""
+
+    id, family = "S04", "S04"
+
+    def targets(self, panel: Panel) -> np.ndarray:
+        if panel.events is None:
+            raise ValueError("S04 needs the point-in-time panel (events matrix)")
+        th, hold = float(self.params.get("threshold", 1.0)), int(self.params.get("hold", 5))
+        n, floor, win = int(self.params.get("n", 1000)), int(self.params.get("min_slots", 10)), 60
+        r = panel.returns()
+        rel = r - r[:, [panel.col("SPY")]]
+        # trailing sigma through t-1 (the reaction day itself is excluded)
+        sd = np.full_like(rel, np.nan)
+        x = np.where(np.isfinite(rel), rel, 0.0)
+        ok = np.isfinite(rel).astype(float)
+        cs, cs2, cn = (np.vstack([np.zeros((1, rel.shape[1])), np.cumsum(a, axis=0)]) for a in (x, x * x, ok))
+        T = rel.shape[0]
+        for t in range(win + 1, T):
+            m = cn[t] - cn[t - win]
+            mu = (cs[t] - cs[t - win]) / np.maximum(m, 1)
+            var = (cs2[t] - cs2[t - win]) / np.maximum(m, 1) - mu * mu
+            sd[t] = np.where(m >= 40, np.sqrt(np.maximum(var, 0) * m / np.maximum(m - 1, 1)), np.nan)
+        uni = liquid_universe(panel, n=n)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            z = rel / sd
+        sig = panel.events & uni & np.isfinite(z) & (z >= th)
+        active = np.zeros(sig.shape, dtype=bool)
+        for k in range(hold):
+            active[k:] |= sig[: T - k]
+        active &= np.isfinite(panel.close)
+        cnt = active.sum(axis=1, keepdims=True)
+        return np.where(active, 1.0 / np.maximum(cnt, floor), 0.0)
+
+
 REGISTRY: dict[str, type[Strategy]] = {
+    "S04": EarningsDrift,
     "S01": EtfTrend,
     "S02": ShortTermReversal,
     "SAN01": BuyHold,

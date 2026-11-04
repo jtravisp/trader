@@ -253,6 +253,34 @@ def check_massive() -> list[Issue]:
     return out
 
 
+def check_universe() -> list[Issue]:
+    """Derived PIT universe (D20/D21): every month-end snapshot from 2016-10-31 has a full top-N,
+    each ticker maps to one line, and members have bars at the snapshot."""
+    from trader.universe import pit
+
+    if not lake.exists(pit.PIT):
+        return [Issue("universe", "_dataset", "universe_pit not built yet", "warn")]
+    u = lake.scan(pit.PIT).collect()
+    n_max = int(u["rank"].max())
+    out = []
+    for snap, n in u.group_by("snapshot").agg(pl.len()).sort("snapshot").iter_rows():
+        if n < n_max:
+            out.append(Issue("universe", f"snapshot:{snap}", f"only {n} members (expected {n_max})"))
+    dup = u.group_by("snapshot", "ticker").agg(pl.len().alias("k")).filter(pl.col("k") > 1)
+    if dup.height:
+        out.append(Issue("universe", "_dup", f"{dup.height} (snapshot, ticker) pairs map to more than one line"))
+    lines = lake.scan(pit.LINES).collect()
+    multi = lines.group_by("ticker").agg(pl.col("line_id").n_unique().alias("k")).filter(pl.col("k") > 1)
+    if multi.height:
+        out.append(Issue("universe", "_lines", f"{multi.height} tickers belong to more than one line"))
+    snaps = sorted(set(u["snapshot"]))
+    expect = [d for d in lake.scan("massive_tickers").select("snapshot").unique().collect()["snapshot"] if d >= pit.START]
+    missing = sorted(set(expect) - set(snaps))
+    if missing:
+        out.append(Issue("universe", "_snapshots", f"{len(missing)} listing snapshots have no ranking, first {missing[:3]}"))
+    return out
+
+
 # ---------------------------------------------------------------- runner
 def run_all(sample: int = 20, seed: int = 7, log=print) -> bool:
     issues: list[Issue] = []
@@ -267,7 +295,7 @@ def run_all(sample: int = 20, seed: int = 7, log=print) -> bool:
     else:
         issues.append(Issue("daily", "_dataset", "bars_daily not ingested"))
     log("check: minute, news, edgar, fred")
-    issues += check_minute_coverage() + check_news() + check_edgar() + check_fred() + check_massive()
+    issues += check_minute_coverage() + check_news() + check_edgar() + check_fred() + check_massive() + check_universe()
     issues = _explain(issues)
     unexplained = [i for i in issues if i.severity == "fail" and not i.explained]
     write_report(issues)

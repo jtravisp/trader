@@ -191,4 +191,34 @@ def load_pit_panel(max_rank: int = 1000):
         if cur is not None:
             rank[i] = cur
     return Panel(p.dates, p.symbols, p.open, p.close, p.raw_close, p.dollar_volume, p.is_etf,
-                 {**p.meta, "universe": "pit", "lines": names}, rank)
+                 {**p.meta, "universe": "pit", "lines": names}, rank, earnings_events(p, names))
+
+
+def earnings_events(p, names: dict[str, str]):
+    """T x N bool: True at the reaction session of an 8-K with Item 2.02 (results of operations),
+    i.e. the first session whose close is after the EDGAR acceptance time (known_ts). Every line of
+    the filer's CIK gets the event (share classes). Lines without a CIK get none."""
+    import numpy as np
+
+    from trader.data import edgar
+
+    ev = np.zeros((p.T, p.N), dtype=bool)
+    if not lake.exists(edgar.FILINGS):
+        return ev
+    col = {s: j for j, s in enumerate(p.symbols)}
+    cik_cols: dict[int, list[int]] = {}
+    for lid, sym in names.items():
+        c = lid.rsplit("-", 1)[0]
+        if c.isdigit() and sym in col:
+            cik_cols.setdefault(int(c), []).append(col[sym])
+    f = lake.scan(edgar.FILINGS).filter((pl.col("form") == "8-K") & pl.col("items").str.contains("2.02", literal=True)
+             & pl.col("cik").is_in(list(cik_cols))).select("cik", "known_ts").collect()
+    sess = calendar.sessions_frame().select("date", "close_ts").sort("close_ts")
+    f = f.sort("known_ts").join_asof(sess, left_on="known_ts", right_on="close_ts", strategy="forward",
+                                     allow_exact_matches=False)
+    row = {d: i for i, d in enumerate(p.dates.astype("O"))}
+    for cik, d in zip(f["cik"], f["date"], strict=True):
+        i = row.get(d)
+        if i is not None:
+            ev[i, cik_cols[cik]] = True
+    return ev

@@ -67,11 +67,24 @@ def ingest_news(start: str = typer.Option("2015-01-01"), end: str = typer.Option
 
 
 @ingest_app.command("edgar")
-def ingest_edgar() -> None:
-    """EDGAR filings index + XBRL facts for the stock seed."""
+def ingest_edgar(universe: bool = typer.Option(False, help="all CIKs in the Massive listings (PIT universe), filings only")) -> None:
+    """EDGAR filings index + XBRL facts for the stock seed (or filings for the whole PIT universe)."""
     from trader.data import edgar
     from trader.universe.build import load_seed
 
+    if universe:
+
+        from trader.data import lake
+        from trader.universe.pit import snapshots
+
+        have = set(lake.scan(edgar.FILINGS).select("cik").unique().collect()["cik"])
+        ciks = sorted({int(c) for c in snapshots()["cik"].drop_nulls().unique() if str(c).isdigit()} - have)
+        log(f"edgar filings for {len(ciks)} universe CIKs not yet fetched")
+        for i in range(0, len(ciks), 1000):  # bounded memory; each batch merges into the lake
+            log(f" batch {i // 1000 + 1}/{(len(ciks) + 999) // 1000}")
+            edgar.ingest_filings(ciks[i : i + 1000], log=log)
+        log("done")
+        return
     ciks = load_seed()["cik"].unique().to_list()
     log(f"edgar filings for {len(ciks)} CIKs")
     edgar.ingest_filings(ciks, log=log)
@@ -122,6 +135,14 @@ def survivorship() -> None:
     from trader.universe import survivorship as sv
 
     sv.run(log=log)
+
+
+@app.command()
+def adjustments() -> None:
+    """P3: rebuild adjustment factors from Massive splits/dividends and compare with Alpaca's."""
+    from trader.data import adjust
+
+    adjust.compare(log=log)
 
 
 @app.command("build-universe")
