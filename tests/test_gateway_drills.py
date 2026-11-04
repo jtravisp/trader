@@ -216,3 +216,10 @@ def test_drill_dry_run_never_blocks_the_real_run(env):
     assert real.status == "executed" and real.submitted > 0
     assert len(b.orders) == real.submitted and len({o.client_order_id for o in b.orders}) == len(b.orders)
     assert _run(con, b, "r1", None).status == "already_executed"
+
+
+def test_small_new_entries_are_ordered_resizes_below_drift_are_not(env):
+    con, _ = env
+    b = FakeBroker()
+    res = _run(con, b, "r1", {"SPY": 0.01, "TLT": 0.01})
+    assert res.status == "executed" and {o.symbol for o in b.orders} == {"SPY", "TLT"}

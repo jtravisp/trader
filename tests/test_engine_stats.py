@@ -159,3 +159,11 @@ def test_name_pnl_attributes_gross_returns():
     r = engine.run(p, tg, NOCOST, FREE)
     assert np.isclose(r.name_pnl.sum(), r.gross.sum(), rtol=1e-3)
     assert abs(r.name_pnl[0]) > abs(r.name_pnl[2]) * 0.5  # larger weight, larger share (same vol)
+
+
+def test_min_drift_never_blocks_small_new_entries():
+    p = make_panel([[100] * 100] * 3, [[100] * 100] * 3)
+    tg = np.full((3, 100), np.nan)
+    tg[0] = 0.01  # 100 names at 1% each: below the 2% drift threshold, but these are entries
+    res = engine.run(p, tg, NOCOST, engine.Constraints(1, 1, 1, 0.02))
+    assert np.isclose(res.exposure[1], 1.0)

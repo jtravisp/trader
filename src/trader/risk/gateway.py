@@ -113,7 +113,8 @@ def plan_orders(target: dict[str, float], acct: Account, pos: dict[str, Position
         if tgt <= 0 and sym in pos and pos[sym].qty > 0:
             raw.append(PlannedOrder(sym, "sell", None, pos[sym].qty))  # full exit by quantity
             continue
-        if abs(diff) < o["min_rebalance_drift"] or abs(diff) * eq < o["min_order_notional_usd"]:
+        # min drift applies to resizing a held position; a new entry only needs the minimum notional
+        if (cur > 0 and abs(diff) < o["min_rebalance_drift"]) or abs(diff) * eq < o["min_order_notional_usd"]:
             continue
         side = "buy" if diff > 0 else "sell"
         if sells_only and side == "buy":

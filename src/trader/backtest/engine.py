@@ -133,7 +133,8 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
             gone = ~tradable & ~np.isfinite(c[d - 1])
             tgt = np.where(tradable, tgt, np.where(gone, 0.0, w_open))
             trade = tgt - w_open
-            small = (np.abs(trade) < cons.min_drift) & (tgt > 0)
+            # min-drift skips small RESIZES of an existing position only; entries and exits always trade
+            small = (np.abs(trade) < cons.min_drift) & (tgt > 0) & (w_open > 0)
             trade = np.where(small, 0.0, trade)
             cost = float(np.abs(trade) @ side) + float(np.clip(-trade, 0, None).sum()) * SEC_FEE_BPS_ON_SELLS / 1e4
             w_open = w_open + trade

@@ -27,6 +27,8 @@ def done(strategy_id: str, universe: str) -> list[dict]:
     from trader.signals.library import REGISTRY
 
     ft = registry.family_trials(strategy_id, 1.0, 0)
+    if ft.height:
+        ft = ft.filter(ft["status"].is_in(["ok", "leak_detected"]))  # superseded runs don't count as done
     any_universe = not REGISTRY[strategy_id].stock_universe  # ETF strategies: universe is irrelevant
     out = []
     for p in ft["params"].to_list() if ft.height else []:
