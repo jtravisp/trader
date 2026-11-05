@@ -169,5 +169,5 @@ def build(d: date, broker, log=print) -> str:
          f"{len(fills)} fills; halts: {', '.join(h['kind'] for h in halts) or 'none'}", "2")
     g = gate(read_records())
     log(f"report: {path}; P4 gate: clean streak {g['clean_streak']}/10, |exec TE| < 10bp on "
-        f"{g['te_within_share']:.0%} of {g['te_days']} non-build-up days -> {'PASS' if g['pass'] else 'not yet'}")
+        f"{'n/a' if g['te_days'] == 0 else format(g['te_within_share'], '.0%')} of {g['te_days']} non-build-up days -> {'PASS' if g['pass'] else 'not yet'}")
     return str(path)

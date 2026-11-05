@@ -356,7 +356,7 @@ def live_gate() -> None:
     from trader.monitor import daily
 
     g = daily.gate(daily.read_records())
-    log(f"P4 gate: clean streak {g['clean_streak']}/10; |exec TE| < 10bp on {g['te_within_share']:.0%} of "
+    log(f"P4 gate: clean streak {g['clean_streak']}/10; |exec TE| < 10bp on {'n/a' if g['te_days'] == 0 else format(g['te_within_share'], '.0%')} of "
         f"{g['te_days']} non-build-up days -> {'PASS' if g['pass'] else 'not yet'}")
 
 
