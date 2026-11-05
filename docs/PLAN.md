@@ -111,6 +111,7 @@ Keep the parameter grids small and pre-declared in `docs/STRATEGIES.md` before r
 - S03 (momentum): **passes the gate as declared**, but it is mostly beta (1.27). CAPM alpha t is 1.6. See RESEARCH.md. It is the best P3 baseline, so it is the candidate for paper trading via `promote-strategy`. Paper trading costs nothing, and it tests the stock path of the live stack.
 - S05 (LightGBM ranker): **failed** (best Sharpe 0.76 vs SPY 0.92, PBO 0.69).
 - S03 robustness (lookback 63/189) and the overlays S07 (vol target) and S08 (stops): S03's family PBO is 0.17, so the gate now fully passes. Neither overlay is adopted, and there's no intraday protection (D27). **S03 v1 is on paper (D26).**
+- 2026-11-05: S09 (daily reversal), S10 (quality), S11 (low vol) and S12 (sector momentum) all **failed**; none beats SPY or shows alpha after beta. S03 stays the only passing baseline.
 - P5/P6 groundwork, built ahead of time:
   - Feature library: price, event, fundamental (point-in-time XBRL TTM and growth per filing) and FRED regime.
   - The S05 walk-forward LightGBM ranker, declared (12 trials) and tested on a planted signal.
