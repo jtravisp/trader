@@ -11,7 +11,7 @@ from trader.backtest import engine
 from trader.backtest.panel import Panel, load_panel
 from trader.research import metrics, registry, stats
 from trader.signals.library import REGISTRY
-from trader.research import fast, overlays  # noqa: E402,F401  (registers research-only S07/S08/S09 into REGISTRY)
+from trader.research import factors, fast, overlays  # noqa: E402,F401  (registers research-only S07-S12 into REGISTRY)
 
 
 @dataclass

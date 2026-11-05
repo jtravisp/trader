@@ -7,7 +7,7 @@ from __future__ import annotations
 import itertools
 import json
 
-from trader.research import fast, overlays, registry, runner  # noqa: F401  (registers S07/S08/S09)
+from trader.research import factors, fast, overlays, registry, runner  # noqa: F401  (registers S07-S12)
 
 GRIDS: dict[str, dict[str, list]] = {
     "S01": {"lookback": [63, 126, 252], "vol_target": [0.10, 0.15]},
@@ -16,6 +16,9 @@ GRIDS: dict[str, dict[str, list]] = {
     "S07": {"vol_target": [0.15, 0.20]},
     "S08": {"stop": [0.10, 0.20]},
     "S09": {"lookback": [1, 3], "hold": [1, 3]},
+    "S10": {"composite": ["roa", "roa_acc_lev"], "hold": [1, 5, 20]},
+    "S11": {"window": [60, 252], "hold": [1, 5, 20]},
+    "S12": {"lookback": [126, 252], "hold": [1, 5, 20]},
     "S04": {"threshold": [1.0, 2.0], "hold": [5, 20]},
     "S05": {"features": ["price", "price+fund", "all"], "num_leaves": [15, 63], "n_estimators": [300, 800]},
 }
