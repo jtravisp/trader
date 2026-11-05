@@ -150,6 +150,7 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - Scheduling: `scripts/register-tasks.ps1` registered 2026-11-03 (evening forward + report + target at 18:00 CT; weekday 08:40 CT gateway on paper).
 - Paper account reset to **$200** (matches D10). One key pair serves data + paper trading; verified 401 on the live endpoint.
 - Alerts: ntfy push working (`trader live test-alert`). Refusals/halts/failures push; turnover deferrals are log-only; a low-priority daily summary pushes after the evening report.
+- **Replay mode (2026-11-05, `trader replay`):** runs the unchanged runner + gateway over past sessions with a simulated broker (fills at the open ± modeled cost, T+1 settlement) and compares with the engine. S03 over 2025-01..2025-10 with human halts auto-cleared: +47.9% vs engine +49.7%, daily correlation 0.985, mean daily difference −0.4 bps (the rest is the 60% turnover cap spreading rebalances over 2 days, and leftover cash). With the real halt policy, the 15% peak-drawdown halt fires on 2025-02-26 (8 weeks in) and S03 then fell to −43% from peak by 2025-04-07.
 - First paper orders: 2026-11-04 09:40 ET, FALLBACK builds 60% SPY on day 1 (5 x $24 chunks), the rest on day 2.
 
 ## P5 — ML ranker (weeks 5–9)

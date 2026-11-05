@@ -217,6 +217,27 @@ def backtest(
     runner.full_experiment(strategy, json.loads(params), constraints=constraints, notes=notes, log=log, universe=universe)
 
 
+@app.command("replay")
+def replay_cmd(start: str = typer.Option("2025-01-02"), end: str = typer.Option("2025-11-01", help="exclusive; must not pass HOLDOUT_START"),
+               capital: float = typer.Option(200.0), auto_clear: bool = typer.Option(False, help="clear human halts each morning")) -> None:
+    """Run the live runner + gateway code over past sessions with a simulated broker; compare with the engine."""
+    from datetime import date as d_
+
+    import numpy as np
+
+    from trader.research import replay
+
+    r = replay.run(d_.fromisoformat(start), d_.fromisoformat(end), capital, auto_clear)
+    diff = (r["replay"] - r["engine"]) * 1e4
+    log(f"replay {start}..{end}: {len(diff)} sessions, {r['orders']} orders ({len(r['rejected'])} rejected), "
+        f"final equity ${r['equity'][-1]:,.2f}")
+    log(f"  return replay {np.prod(1 + r['replay']) - 1:+.2%} vs engine {np.prod(1 + r['engine']) - 1:+.2%}; "
+        f"daily diff mean {diff.mean():+.2f} bps, mean |diff| {np.abs(diff).mean():.1f} bps, corr {np.corrcoef(r['replay'], r['engine'])[0, 1]:.3f}")
+    for kind, sess, reason in r["halts"][:10]:
+        log(f"  halt {sess} {kind}: {reason}")
+    log(f"  {len(r['alerts'])} alerts would have been sent")
+
+
 @app.command("llm-eval")
 def llm_eval(force: bool = typer.Option(False, help="compute outcome stats before the declared sample size (logged as forced)")) -> None:
     """S06 stage 1: forward event study of LLM scores (data health until the declared read)."""

@@ -281,8 +281,12 @@ def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str
         (since,),
     ).fetchone()
     plan = plan_orders(target, acct, pos, etfs, lim, int(row[0]), float(row[1]), sells_only, plan)
-    for sym, why in dict.fromkeys(plan.refused):  # one alert per (symbol, reason)
-        _alert(con, "warning", "order_refused", f"{sym}: {why}")
+    by_reason: dict[str, list[str]] = {}
+    for sym, why in dict.fromkeys(plan.refused):  # one alert per reason, listing the symbols
+        by_reason.setdefault(why, []).append(sym)
+    for why, syms in by_reason.items():
+        more = f" (+{len(syms) - 10} more)" if len(syms) > 10 else ""
+        _alert(con, "warning", "order_refused", f"{why}: {', '.join(syms[:10])}{more}")
     for sym, why in dict.fromkeys(plan.deferred):
         state.event(con, "info", "order_deferred", f"{sym}: {why}")
 
