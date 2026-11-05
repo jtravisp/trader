@@ -185,7 +185,7 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - The whole $200 goes in at once. Scaling up means adding new deposits, only after 3+ months of live results that track paper.
 - Taxes: short-term gains are taxed as ordinary income. The fill log must support Form 8949 export and wash-sale tracking. Alpaca issues a 1099-B, and our log is the cross-check.
 - Use a separate cash account (no margin) with a fixed deposit. Treat that deposit as the maximum loss.
-- Months 1–3: 25% of intended capital. Scale up only if live tracks paper and the modeled slippage holds.
+- Months 1–3: the full $200 (D10). Add new deposits only if live tracks paper and the modeled slippage holds; at most 2x per step.
 - Hard rules:
   - Drawdown of 15% from peak → automatic halt and review.
   - Strategy drift (live outside the 95% band for 20 days) → revert to SPY.
