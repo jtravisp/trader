@@ -28,5 +28,6 @@ on_breach:
   order_violation: refuse_order_and_alert       # rest of the batch proceeds
   daily_loss_halt: halt_until_next_session      # auto-resumes
   peak_drawdown_halt: halt_until_human_clears
+  peak_drawdown_halt_paper: alert_and_continue   # D29: paper only; live keeps the halt
   reconciliation_mismatch: halt_until_human_clears
   duplicate_order_detected: halt_until_human_clears

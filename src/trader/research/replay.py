@@ -169,7 +169,8 @@ def run(start: date, end: date, capital: float = 200.0, auto_clear: bool = False
             if row:
                 con.execute("UPDATE runs SET status='superseded' WHERE status IN ('target_written','incomplete') AND run_id != ?", (row[0],))
                 con.commit()
-                res = gateway.run(row[0], broker, con, allow, etfs, lim, datetime.combine(d, time(9, 40), NY), dry_run=False)
+                res = gateway.run(row[0], broker, con, allow, etfs, lim, datetime.combine(d, time(9, 40), NY), dry_run=False,
+                                  paper=True)
                 statuses.append(f"{d} {row[0]}: {res.status} {res.submitted} orders, {len(res.deferred)} deferred, {len(res.refused)} refused"
                                 + (f" {sorted(set(res.deferred))[:3]}" if res.deferred else ""))
             eq.append(broker.equity())

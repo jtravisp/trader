@@ -351,7 +351,9 @@ def live_execute(run_id: str = typer.Option("", help="default: latest pending ru
         if n:
             log(f"marked {n} older pending target(s) superseded")
     allow = set(etf_list()) | set(load_seed()["symbol"].to_list())
-    res = gateway.run(run_id, _broker(), con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit)
+    broker = _broker()
+    paper = broker.paper and settings().live_mode == "paper"
+    res = gateway.run(run_id, broker, con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit, paper=paper)
     log(f"gateway {run_id}: {res.status}, submitted {res.submitted}, refused {len(res.refused)}, deferred {len(res.deferred)}")
     if submit:
         from trader.monitor.alerts import heartbeat

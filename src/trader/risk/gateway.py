@@ -7,6 +7,7 @@ kill switch, halts, reconciliation, write-ahead order log, submission.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import sqlite3
 from dataclasses import dataclass, field
@@ -230,7 +231,8 @@ def preview(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set
 
 
 def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str], etfs: set[str], lim: dict,
-        now: datetime, dry_run: bool = True) -> RunResult:
+        now: datetime, dry_run: bool = True, paper: bool = False) -> RunResult:
+    """paper=True (paper keys AND settings mode 'paper') applies the paper breach policy (D29)."""
     session = now.astimezone(NY).date().isoformat()
     if state.KILL_FILE.exists():
         n = 0 if dry_run else broker.cancel_all()
@@ -265,7 +267,17 @@ def run(run_id: str, broker: Broker, con: sqlite3.Connection, allowlist: set[str
     acct, pos = broker.account(), broker.positions()
     peak = state.peak_equity(con, acct.equity)
     dd = acct.equity / peak - 1 if peak > 0 else 0.0
-    if dd <= -lim["drawdown"]["peak_drawdown_halt"]:
+    if dd <= -lim["drawdown"]["peak_drawdown_halt"] and paper and             lim["on_breach"].get("peak_drawdown_halt_paper") == "alert_and_continue":
+        # D29: on paper the strategy keeps running through its drawdowns; alert once per 5-point band
+        band = int(-dd / 0.05)
+        last = con.execute("SELECT detail FROM events WHERE kind='peak_drawdown_paper' ORDER BY ts DESC LIMIT 1").fetchone()
+        prev = json.loads(last[0]) if last else {}
+        if prev.get("peak") != round(peak, 2) or band > prev.get("band", 0):
+            state.event(con, "critical", "peak_drawdown_paper", {"peak": round(peak, 2), "band": band, "dd": round(dd, 4)})
+            from trader.monitor.alerts import notify
+            notify("critical", f"[gateway] peak_drawdown (paper): {dd:.1%} from peak {peak:.2f}; "
+                               "trading continues on paper (D29), review the strategy")
+    elif dd <= -lim["drawdown"]["peak_drawdown_halt"]:
         state.set_halt(con, "peak_drawdown", f"equity {acct.equity:.2f} is {dd:.1%} below peak {peak:.2f}", session)
         _alert(con, "critical", "peak_drawdown", f"{dd:.1%} from peak: trading halted until a human clears it")
         return RunResult("halted")

@@ -68,10 +68,10 @@ def env(tmp_path, monkeypatch):
     return con, alerts
 
 
-def _run(con, broker, run_id, weights, dry=False, now=OPEN_TIME):
+def _run(con, broker, run_id, weights, dry=False, now=OPEN_TIME, paper=False):
     if weights is not None:
         state.write_target(con, run_id, "TEST", weights)
-    return gateway.run(run_id, broker, con, ALLOW, ETFS, limits(), now, dry_run=dry)
+    return gateway.run(run_id, broker, con, ALLOW, ETFS, limits(), now, dry_run=dry, paper=paper)
 
 
 # ---------------------------------------------------------------- drills
@@ -145,6 +145,25 @@ def test_drill_peak_drawdown_needs_human(env):
     con.execute("DELETE FROM equity")  # operator resets the peak as part of the review
     con.commit()
     assert _run(con, b, "r3", {"SPY": 0.3}, now=datetime(2026, 11, 9, 10, 5, tzinfo=NY)).status == "executed"
+
+
+def test_paper_peak_drawdown_alerts_and_continues(env):
+    """D29: on paper the halt becomes an alert (once per 5-point band); live keeps the hard halt."""
+    con, _ = env
+    count = lambda: con.execute("SELECT COUNT(*) FROM events WHERE kind='peak_drawdown_paper'").fetchone()[0]
+    _run(con, FakeBroker(equity=1000), "r0", {"$CASH": 1.0}, paper=True)  # peak 1000
+    b = FakeBroker(equity=840, last_equity=850)
+    assert _run(con, b, "r1", {"SPY": 0.3}, paper=True).status == "executed"
+    assert b.orders and not state.active_halts(con, "2026-11-04") and count() == 1
+    _run(con, FakeBroker(equity=830, last_equity=840), "r2", {"SPY": 0.3}, paper=True,
+         now=datetime(2026, 11, 5, 10, 0, tzinfo=NY))
+    assert count() == 1  # same band (-16% -> -17%): no repeat alert
+    _run(con, FakeBroker(equity=790, last_equity=830), "r3", {"SPY": 0.3}, paper=True,
+         now=datetime(2026, 11, 6, 10, 0, tzinfo=NY))
+    assert count() == 2  # -21%: next band
+    # without the paper flag (live) the halt still holds
+    assert _run(con, FakeBroker(equity=790, last_equity=790), "r4", {"SPY": 0.3},
+                now=datetime(2026, 11, 9, 10, 0, tzinfo=NY)).status == "halted"
 
 
 def test_drill_kill_switch(env):

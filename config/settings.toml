@@ -20,8 +20,8 @@ scoring_model = "claude-haiku-5-5"
 scoring_model_cutoff = "2026-06"
 scoring_eval_start = "2026-07-01"
 prompt_version = "v1"
-monthly_budget_usd = 3.0   # D11, enforced in trader.llm.budget
-daily_budget_usd = 0.14    # ~= 3.0 / 21 trading days
+monthly_budget_usd = 7.0   # D11, raised by D29 (was 3.0); enforced in trader.llm.budget
+daily_budget_usd = 0.35    # ~= 7.0 / 21 trading days (D29; was 0.14)
 
 [live]
 mode = "paper"
