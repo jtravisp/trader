@@ -75,10 +75,14 @@ def attribution(qty_end: dict[str, float], fills: list, px: dict[str, dict], cas
     return out
 
 
-def gate(records: list[dict], bound_bps: float = 10.0, share: float = 0.90, days: int = 10) -> dict:
+def gate(records: list[dict], bound_bps: float = 10.0, share: float = 0.90, days: int = 10,
+         is_session=None) -> dict:
     """P4: `days` consecutive clean trading days (latest streak), and |exec TE| < bound on >= share of
-    the non-build-up days in that streak."""
-    by = {r["date"]: r for r in records}  # latest record per date wins
+    the non-build-up days in that streak. Reports for non-sessions (weekends, holidays: the evening job
+    runs every day) are skipped, not counted as unclean."""
+    if is_session is None:
+        from trader.calendar import is_session
+    by = {r["date"]: r for r in records if is_session(date.fromisoformat(r["date"]))}  # latest per date wins
     streak: list[dict] = []
     for k in sorted(by):
         r = by[k]

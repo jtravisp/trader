@@ -48,17 +48,25 @@ def _r(d, te, build_up=False, halts=(), errors=()):
     return {"date": f"2026-11-{d:02d}", "exec_te_bps": te, "build_up": build_up, "halts": list(halts), "errors": list(errors)}
 
 
+ALL = lambda d: True  # noqa: E731
+
+
+def test_gate_skips_non_sessions():
+    recs = [_r(d, 2.0) for d in (3, 4, 5, 6)] + [{"date": "2026-11-07", "exec_te_bps": None, "halts": [], "errors": []}]
+    assert gate(recs, is_session=lambda d: d.weekday() < 5)["clean_streak"] == 4
+
+
 def test_gate_streak_resets_and_excludes_buildup():
     recs = [_r(1, 1.0, errors=["submit_failed"])] + [_r(d, 2.0, build_up=d < 4) for d in range(2, 12)]
-    g = gate(recs)
+    g = gate(recs, is_session=ALL)
     assert g["clean_streak"] == 10 and g["te_days"] == 8 and g["pass"]
     recs.append(_r(12, 50.0))
     recs.append(_r(12, 1.0))  # a rerun of the same date replaces the earlier record
-    assert gate(recs)["clean_streak"] == 11
+    assert gate(recs, is_session=ALL)["clean_streak"] == 11
     recs.append(_r(13, 3.0, halts=["daily_loss"]))
-    assert gate(recs)["clean_streak"] == 0 and not gate(recs)["pass"]
+    assert gate(recs, is_session=ALL)["clean_streak"] == 0 and not gate(recs, is_session=ALL)["pass"]
 
 
 def test_gate_te_share():
     recs = [_r(d, 20.0 if d <= 2 else 1.0) for d in range(1, 11)]  # 8/10 within
-    assert not gate(recs)["pass"]
+    assert not gate(recs, is_session=ALL)["pass"]
