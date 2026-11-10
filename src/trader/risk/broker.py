@@ -35,6 +35,7 @@ class BrokerOrder:
     qty: float | None
     filled_qty: float
     filled_avg_price: float | None
+    submitted_at: str | None = None  # ISO UTC; the report's execution-price reference
 
 
 class Broker(Protocol):
@@ -52,7 +53,8 @@ class Broker(Protocol):
 def _order(o: dict) -> BrokerOrder:
     f = lambda k: float(o[k]) if o.get(k) not in (None, "") else None
     return BrokerOrder(str(o["id"]), o.get("client_order_id", ""), o["symbol"], o["side"], o["status"],
-                       f("notional"), f("qty"), f("filled_qty") or 0.0, f("filled_avg_price"))
+                       f("notional"), f("qty"), f("filled_qty") or 0.0, f("filled_avg_price"),
+                       str(o["submitted_at"]) if o.get("submitted_at") else None)
 
 
 class AlpacaBroker:

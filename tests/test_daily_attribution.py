@@ -31,6 +31,21 @@ def test_slippage_and_costs_show_up_as_exec_error():
     assert a["exec_te_bps"] == pytest.approx(slip + cost)
 
 
+def test_fill_at_execution_price_is_timing_not_execution_error():
+    # the price drifted from the open (765) to 768 by 09:40; we bought exactly at 768 with no cost
+    q = 0.15
+    fills = [F(symbol="SPY", side="buy", filled_qty=q, filled_avg_price=768.0, submitted_at=None)]
+    cash = 200 - q * 768.0
+    a = attribution({"SPY": q}, fills, PX, cash, 200.0, {"SPY": 1.0}, {"SPY"}, 0.0, 0.0, {"SPY": 768.0})
+    assert a["exec_te_bps"] == pytest.approx(0.0, abs=1e-9)
+    assert a["timing_bps"] == pytest.approx(q * 3.0 / 200 * 1e4)  # the open would have been $3/share better
+    assert a["exec_ref_missing"] == []
+    # without an execution price the open is used, and the drift lands in the execution error
+    b = attribution({"SPY": q}, fills, PX, cash, 200.0, {"SPY": 1.0}, {"SPY"}, 0.0, 0.0, {})
+    assert b["exec_ref_missing"] == ["SPY"] and b["timing_bps"] == pytest.approx(0.0, abs=1e-9)
+    assert b["exec_te_bps"] == pytest.approx(-q * 3.0 / 200 * 1e4)
+
+
 def test_held_position_no_trades_matches_target_replay():
     q = 200 / 760.0
     a = attribution({"SPY": q}, [], PX, 0.0, 200.0, {"SPY": 1.0}, {"SPY"}, 2.0, 5.0)
@@ -44,8 +59,9 @@ def test_missing_prices_skip():
     assert a["missing_prices"] == ["ABC"] and "exec_te_bps" not in a
 
 
-def _r(d, te, build_up=False, halts=(), errors=()):
-    return {"date": f"2026-11-{d:02d}", "exec_te_bps": te, "build_up": build_up, "halts": list(halts), "errors": list(errors)}
+def _r(d, te, build_up=False, halts=(), errors=(), n_fills=5, te_ref="exec"):
+    return {"date": f"2026-11-{d:02d}", "exec_te_bps": te, "build_up": build_up, "halts": list(halts),
+            "errors": list(errors), "n_fills": n_fills, "te_ref": te_ref, "timing_bps": 1.0}
 
 
 ALL = lambda d: True  # noqa: E731
@@ -56,10 +72,23 @@ def test_gate_skips_non_sessions():
     assert gate(recs, is_session=lambda d: d.weekday() < 5)["clean_streak"] == 4
 
 
-def test_gate_streak_resets_and_excludes_buildup():
+def test_gate_counts_only_fill_days_with_exec_reference():
+    # no-fill days extend the streak but say nothing about execution; open-based records don't count
+    recs = [_r(d, 0.0, n_fills=0) for d in range(1, 11)]
+    g = gate(recs, is_session=ALL)
+    assert g["clean_streak"] == 10 and g["te_days"] == 0 and not g["pass"]
+    recs[3] = _r(4, 30.0, te_ref=None)  # an old open-based record: counts toward the streak only
+    recs[4] = _r(5, 3.0)
+    assert gate(recs, is_session=ALL)["te_days"] == 1 and not gate(recs, is_session=ALL)["pass"]  # needs 2
+    recs[5] = _r(6, 4.0, build_up=True)  # build-up days count for execution
+    g = gate(recs, is_session=ALL)
+    assert g["te_days"] == 2 and g["pass"] and g["mean_timing_bps"] == pytest.approx(1.0)
+
+
+def test_gate_streak_resets():
     recs = [_r(1, 1.0, errors=["submit_failed"])] + [_r(d, 2.0, build_up=d < 4) for d in range(2, 12)]
     g = gate(recs, is_session=ALL)
-    assert g["clean_streak"] == 10 and g["te_days"] == 8 and g["pass"]
+    assert g["clean_streak"] == 10 and g["te_days"] == 10 and g["pass"]
     recs.append(_r(12, 50.0))
     recs.append(_r(12, 1.0))  # a rerun of the same date replaces the earlier record
     assert gate(recs, is_session=ALL)["clean_streak"] == 11

@@ -3,13 +3,16 @@
 - Equity and day return vs SPY.
 - Fills: average fill price vs the session OPEN (the backtest's fill price) -> realized slippage
   in bps, against the modeled cost (D4).
-- Live vs model, split in two (`attribution`, pure):
-  * execution error = live return - holdings model. Live return is marked at official closes (not
-    Alpaca's after-hours equity). The model uses the actual start-of-day holdings for the overnight leg,
-    fills today's trades at the session open, holds the actual end-of-day positions open -> close, and
-    charges the modeled cost (D4). This is the P4 tracking-error bound (< 10 bps on 90% of days).
+- Live vs model, split in three (`attribution`, pure):
+  * execution error = live return - holdings model (D30). Live return is marked at official closes (not
+    Alpaca's after-hours equity). The model uses the actual start-of-day holdings up to the execution
+    price, fills today's trades at the execution price (the open of the 1-minute bar in which each order
+    was submitted, about 09:40 ET), holds the actual end-of-day positions to the close, and charges the
+    modeled cost (D4). This is the P4 bound (< 10 bps on 90% of days with fills).
+  * timing = the same model filled at the session open (the backtest's price) minus the model filled at
+    the execution price. This is open-to-09:40 drift: zero-mean in research (D30), large on single days.
   * strategy gap = live return - close-to-close return of the target weights (what the backtest
-    holds). Large on build-up days (turnover cap, D18), which are excluded from the gate count.
+    holds). Large on build-up days (turnover cap, D18).
 - `gate()`: the P4 gate over live/reports/daily.jsonl (latest record per date).
 - Halts, refusals and alerts of the day.
 """
@@ -42,12 +45,48 @@ def _bars(symbols: list[str], d: date) -> dict[str, dict]:
     return out
 
 
+def _minute_px(fills: list, d: date) -> dict[str, float]:
+    """Execution-price reference per symbol: the open of the 1-minute bar in which its first order of the
+    day was submitted. Symbols without a bar fall back to the session open in `attribution`."""
+    when: dict[str, datetime] = {}
+    for o in fills:
+        if o.submitted_at:
+            t = datetime.fromisoformat(o.submitted_at.replace("Z", "+00:00")).replace(second=0, microsecond=0)
+            when[o.symbol] = min(t, when.get(o.symbol, t))
+    if not when:
+        return {}
+    from trader.data.http import paginate
+
+    params = {"symbols": ",".join(sorted(when)), "timeframe": "1Min", "start": min(when.values()).isoformat(),
+              "end": (max(when.values()) + timedelta(minutes=1)).isoformat(), "adjustment": "raw", "feed": "sip",
+              "limit": 10000}
+    out: dict[str, float] = {}
+    for page in paginate(alpaca_data(), "/v2/stocks/bars", params):
+        for sym, bars in (page.get("bars") or {}).items():
+            for b in bars:
+                t = datetime.fromisoformat(b["t"].replace("Z", "+00:00"))
+                if sym not in out and t >= when[sym]:
+                    out[sym] = b["o"]
+    return out
+
+
 BUILD_UP_L1 = 0.10  # start-of-day weights this far (L1) from the target = still building up
 
 
+def _model_pnl(qty0: dict, qty_end: dict, fills: list, px: dict, ref: dict, is_etf: set, etf_bps: float,
+               stock_bps: float) -> float:
+    """Start holdings prev_close -> ref price, trades at ref plus modeled cost, end holdings ref -> close."""
+    pnl = sum(q * (ref[k] - px[k]["prev_close"]) for k, q in qty0.items() if abs(q) > 1e-12)
+    pnl += sum(q * (px[k]["close"] - ref[k]) for k, q in qty_end.items() if abs(q) > 1e-12)
+    pnl -= sum(o.filled_qty * ref[o.symbol] * (etf_bps if o.symbol in is_etf else stock_bps) / 1e4 for o in fills)
+    return pnl
+
+
 def attribution(qty_end: dict[str, float], fills: list, px: dict[str, dict], cash_end: float, last_equity: float,
-                target: dict[str, float] | None, is_etf: set[str], etf_bps: float, stock_bps: float) -> dict:
-    """Pure. fills: objects with symbol, side, filled_qty, filled_avg_price. px: symbol -> open/close/prev_close."""
+                target: dict[str, float] | None, is_etf: set[str], etf_bps: float, stock_bps: float,
+                exec_px: dict[str, float] | None = None) -> dict:
+    """Pure. fills: objects with symbol, side, filled_qty, filled_avg_price. px: symbol -> open/close/prev_close.
+    exec_px: symbol -> execution-price reference (missing symbols use the session open)."""
     qty0 = dict(qty_end)
     for o in fills:
         qty0[o.symbol] = qty0.get(o.symbol, 0.0) - (o.filled_qty if o.side == "buy" else -o.filled_qty)
@@ -58,11 +97,16 @@ def attribution(qty_end: dict[str, float], fills: list, px: dict[str, dict], cas
         return out
     live = sum(q * px[k]["close"] for k, q in qty_end.items() if abs(q) > 1e-12) + cash_end
     out["live_ret"] = live / last_equity - 1
-    pnl = sum(q * (px[k]["open"] - px[k]["prev_close"]) for k, q in qty0.items() if abs(q) > 1e-12)
-    pnl += sum(q * (px[k]["close"] - px[k]["open"]) for k, q in qty_end.items() if abs(q) > 1e-12)
-    pnl -= sum(o.filled_qty * px[o.symbol]["open"] * (etf_bps if o.symbol in is_etf else stock_bps) / 1e4 for o in fills)
-    out["model_ret"] = pnl / last_equity
+    at_open = {k: px[k]["open"] for k in held}
+    traded = {o.symbol for o in fills}
+    at_exec = {k: (exec_px or {}).get(k, at_open[k]) if k in traded else at_open[k] for k in held}
+    out["exec_ref_missing"] = sorted(k for k in traded if k not in (exec_px or {}))
+    args = (qty0, qty_end, fills, px)
+    cost = (is_etf, etf_bps, stock_bps)
+    out["model_ret"] = _model_pnl(*args, at_exec, *cost) / last_equity
+    out["model_open_ret"] = _model_pnl(*args, at_open, *cost) / last_equity
     out["exec_te_bps"] = (out["live_ret"] - out["model_ret"]) * 1e4
+    out["timing_bps"] = (out["model_open_ret"] - out["model_ret"]) * 1e4
     if target is not None:
         tgt = {k: float(v) for k, v in target.items() if k != "$CASH"}
         if all(k in px for k in tgt):
@@ -76,10 +120,13 @@ def attribution(qty_end: dict[str, float], fills: list, px: dict[str, dict], cas
 
 
 def gate(records: list[dict], bound_bps: float = 10.0, share: float = 0.90, days: int = 10,
-         is_session=None) -> dict:
-    """P4: `days` consecutive clean trading days (latest streak), and |exec TE| < bound on >= share of
-    the non-build-up days in that streak. Reports for non-sessions (weekends, holidays: the evening job
-    runs every day) are skipped, not counted as unclean."""
+         min_fill_days: int = 2, is_session=None) -> dict:
+    """P4 (D30): `days` consecutive clean trading days (latest streak), and |exec TE| < bound on >= share
+    of the days in that streak with fills (at least `min_fill_days`). Days without fills say nothing about
+    execution (live == model by construction), so they count toward the streak but not the TE share.
+    Build-up days count: execution error doesn't depend on distance from the target. Only records whose
+    model fills at the execution price (`te_ref == "exec"`) count; earlier open-based records don't.
+    Reports for non-sessions (weekends, holidays) are skipped, not counted as unclean."""
     if is_session is None:
         from trader.calendar import is_session
     by = {r["date"]: r for r in records if is_session(date.fromisoformat(r["date"]))}  # latest per date wins
@@ -88,10 +135,13 @@ def gate(records: list[dict], bound_bps: float = 10.0, share: float = 0.90, days
         r = by[k]
         clean = not r.get("halts") and not r.get("errors") and r.get("exec_te_bps") is not None
         streak = [*streak, r] if clean else []
-    te = [abs(r["exec_te_bps"]) for r in streak if not r.get("build_up")]
+    fill_days = [r for r in streak if r.get("n_fills") and r.get("te_ref") == "exec"]
+    te = [abs(r["exec_te_bps"]) for r in fill_days]
     within = sum(x < bound_bps for x in te) / len(te) if te else float("nan")
+    timing = [r["timing_bps"] for r in fill_days if r.get("timing_bps") is not None]
     return {"clean_streak": len(streak), "te_days": len(te), "te_within_share": within,
-            "pass": len(streak) >= days and bool(te) and within >= share}
+            "mean_timing_bps": sum(timing) / len(timing) if timing else float("nan"),
+            "pass": len(streak) >= days and len(te) >= min_fill_days and within >= share}
 
 
 def read_records() -> list[dict]:
@@ -105,9 +155,11 @@ def build(d: date, broker, log=print) -> str:
     con = state.connect()
     acct, pos = broker.account(), broker.positions()
     since = datetime.combine(d, time(0), NY).astimezone(UTC).isoformat()
-    fills = [o for o in broker.orders_since(since) if o.filled_qty > 0]
+    until = datetime.combine(d + timedelta(days=1), time(0), NY).astimezone(UTC).isoformat()
+    fills = [o for o in broker.orders_since(since) if o.filled_qty > 0 and (not o.submitted_at or o.submitted_at < until)]
     syms = sorted({"SPY", *pos, *(o.symbol for o in fills)})
     px = _bars(syms, d)
+    exec_px = _minute_px(fills, d)
     day_ret = acct.equity / acct.last_equity - 1 if acct.last_equity else 0.0
     spy = px.get("SPY")
     spy_ret = spy["close"] / spy["prev_close"] - 1 if spy else float("nan")
@@ -120,7 +172,7 @@ def build(d: date, broker, log=print) -> str:
 
     s0 = settings()
     att = attribution({p.symbol: p.qty for p in pos.values()}, fills, px, acct.cash, acct.last_equity, target,
-                      set(etf_list()), s0.etf_bps, s0.stock_bps)
+                      set(etf_list()), s0.etf_bps, s0.stock_bps, exec_px)
     replay = att.get("replay_ret")
 
     slip = []
@@ -129,8 +181,10 @@ def build(d: date, broker, log=print) -> str:
         b = px.get(o.symbol)
         if b and o.filled_avg_price:
             sign = 1 if o.side == "buy" else -1
+            ref = exec_px.get(o.symbol)
             bps = sign * (o.filled_avg_price / b["open"] - 1) * 1e4
-            slip.append((o.symbol, o.side, o.filled_qty, o.filled_avg_price, b["open"], bps))
+            ebps = sign * (o.filled_avg_price / ref - 1) * 1e4 if ref else None
+            slip.append((o.symbol, o.side, o.filled_qty, o.filled_avg_price, b["open"], bps, ref, ebps))
     events = con.execute("SELECT ts, level, kind, detail FROM events WHERE ts >= ? ORDER BY ts", (since,)).fetchall()
     halts = state.active_halts(con, d.isoformat())
 
@@ -138,19 +192,29 @@ def build(d: date, broker, log=print) -> str:
          f"Equity **${acct.equity:,.2f}** (prev close ${acct.last_equity:,.2f}): day {day_ret:+.2%}; SPY {spy_ret:+.2%}  ",
          f"Cash ${acct.cash:,.2f}; positions {len(pos)}"]
     if "exec_te_bps" in att:
-        L.append(f"Marked at official closes: {att['live_ret']:+.2%}; holdings model (open fills, modeled costs) "
-                 f"{att['model_ret']:+.2%}; **execution error {att['exec_te_bps']:+.1f} bps** (P4 bound 10)  ")
+        L.append(f"Marked at official closes: {att['live_ret']:+.2%}; holdings model (fills at the submit-minute price, "
+                 f"modeled costs) {att['model_ret']:+.2%}; **execution error {att['exec_te_bps']:+.1f} bps** "
+                 f"(P4 bound 10{', no fills: not counted' if not fills else ''}); "
+                 f"open-to-execution timing {att['timing_bps']:+.1f} bps  ")
+        if att.get("exec_ref_missing"):
+            L.append(f"No minute bar for {', '.join(att['exec_ref_missing'])}: session open used as their execution price  ")
     if replay is not None:
         bu = att.get("build_up")
         L.append(f"Target `{run[0]}` close-to-close {replay:+.2%}; strategy gap {att['strategy_gap_bps']:+.1f} bps"
                  + (f" (build-up day: start weights {att['start_l1_vs_target']:.0%} L1 from target, excluded from the gate)" if bu else ""))
     if att.get("missing_prices"):
         L.append(f"No bars for {', '.join(att['missing_prices'])}: attribution skipped")
-    L += ["", "## Fills vs session open (backtest fill price)", "", "| symbol | side | qty | fill | open | slippage bps |", "|---|---|---|---|---|---|"]
-    L += [f"| {a} | {b} | {c:.4f} | {e:.2f} | {f:.2f} | {g:+.1f} |" for a, b, c, e, f, g in slip] or ["| none | | | | | |"]
+    L += ["", "## Fills vs execution price and session open", "",
+          "| symbol | side | qty | fill | exec ref | slippage bps | open | vs open bps |", "|---|---|---|---|---|---|---|---|"]
+    L += [f"| {a} | {b} | {c:.4f} | {e:.2f} | {'n/a' if r is None else format(r, '.2f')} | "
+          f"{'n/a' if eb is None else format(eb, '+.1f')} | {f:.2f} | {g:+.1f} |"
+          for a, b, c, e, f, g, r, eb in slip] or ["| none | | | | | | | |"]
+    eslip = [x[7] for x in slip if x[7] is not None]
     if slip:
         avg = sum(x[5] for x in slip) / len(slip)
-        L.append(f"\nMean slippage vs open {avg:+.1f} bps (modeled cost: {s.etf_bps} bps ETFs / {s.stock_bps} bps stocks per side)")
+        eavg = f"{sum(eslip) / len(eslip):+.1f}" if eslip else "n/a"
+        L.append(f"\nMean slippage vs execution price {eavg} bps; vs open {avg:+.1f} bps "
+                 f"(modeled cost: {s.etf_bps} bps ETFs / {s.stock_bps} bps stocks per side)")
     L += ["", "## Positions", "", "| symbol | qty | value | weight |", "|---|---|---|---|"]
     L += [f"| {p.symbol} | {p.qty:.4f} | ${p.market_value:,.2f} | {p.market_value / acct.equity:.1%} |" for p in pos.values()] or ["| none | | | |"]
     L += ["", "## Halts", ""] + ([f"- **{h['kind']}**: {h['reason']}" for h in halts] or ["none"])
@@ -162,6 +226,8 @@ def build(d: date, broker, log=print) -> str:
            "live_ret": att.get("live_ret"), "model_ret": att.get("model_ret"), "exec_te_bps": att.get("exec_te_bps"),
            "strategy_gap_bps": att.get("strategy_gap_bps"), "build_up": att.get("build_up"), "run_id": run[0] if run else None,
            "n_fills": len(fills), "mean_slip_bps": (sum(x[5] for x in slip) / len(slip)) if slip else None,
+           "mean_exec_slip_bps": (sum(eslip) / len(eslip)) if eslip else None,
+           "timing_bps": att.get("timing_bps"), "te_ref": "exec" if "exec_te_bps" in att else None,
            "halts": [h["kind"] for h in halts],
            "errors": [k for _, lvl, k, _ in events if lvl in ("error", "critical")]}
     with (REPORTS / "daily.jsonl").open("a", encoding="utf-8") as f:
@@ -173,5 +239,5 @@ def build(d: date, broker, log=print) -> str:
          f"{len(fills)} fills; halts: {', '.join(h['kind'] for h in halts) or 'none'}", "2")
     g = gate(read_records())
     log(f"report: {path}; P4 gate: clean streak {g['clean_streak']}/10, |exec TE| < 10bp on "
-        f"{'n/a' if g['te_days'] == 0 else format(g['te_within_share'], '.0%')} of {g['te_days']} non-build-up days -> {'PASS' if g['pass'] else 'not yet'}")
+        f"{'n/a' if g['te_days'] == 0 else format(g['te_within_share'], '.0%')} of {g['te_days']} fill days (need 2) -> {'PASS' if g['pass'] else 'not yet'}")
     return str(path)

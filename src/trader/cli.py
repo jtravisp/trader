@@ -380,7 +380,8 @@ def live_gate() -> None:
 
     g = daily.gate(daily.read_records())
     log(f"P4 gate: clean streak {g['clean_streak']}/10; |exec TE| < 10bp on {'n/a' if g['te_days'] == 0 else format(g['te_within_share'], '.0%')} of "
-        f"{g['te_days']} non-build-up days -> {'PASS' if g['pass'] else 'not yet'}")
+        f"{g['te_days']} fill days (need 2); mean open-to-execution timing "
+        f"{'n/a' if g['te_days'] == 0 else format(g['mean_timing_bps'], '+.1f') + ' bps'} -> {'PASS' if g['pass'] else 'not yet'}")
 
 
 @gw_app.command("test-alert")

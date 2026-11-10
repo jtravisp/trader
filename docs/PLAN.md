@@ -152,6 +152,7 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - Alerts: ntfy push working (`trader live test-alert`). Refusals/halts/failures push; turnover deferrals are log-only; a low-priority daily summary pushes after the evening report.
 - **Replay mode (2026-11-05, `trader replay`):** runs the unchanged runner + gateway over past sessions with a simulated broker (fills at the open ± modeled cost, T+1 settlement) and compares with the engine. S03 over 2025-01..2025-10 with human halts auto-cleared: +47.9% vs engine +49.7%, daily correlation 0.985, mean daily difference −0.4 bps (the rest is the 60% turnover cap spreading rebalances over 2 days, and leftover cash). With the real halt policy, the 15% peak-drawdown halt fires on 2025-02-26 (8 weeks in) and S03 then fell to −43% from peak by 2025-04-07.
 - First paper orders: 2026-11-04 09:40 ET, FALLBACK builds 60% SPY on day 1 (5 x $24 chunks), the rest on day 2.
+- **2026-11-10 (D30):** the TE bound is now measured against the submit-minute (09:40) price on days with fills (≥ 2 needed in the streak); open-to-09:40 drift is reported as timing. Under the old open-based measure every fill day failed (−38 to +36 bps); vs the 09:40 price, slippage was −1 to +7 bps per day. S03 rebalances at month-end, so the first fill days that count are expected around 2026-11-30 / 12-01.
 
 ## P5 — ML ranker (weeks 5–9)
 - Train LightGBM on 5-day forward return rank across the universe, using price, event, fundamental, and regime features.
