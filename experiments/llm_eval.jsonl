@@ -5,3 +5,5 @@
 {"run_at": "2026-11-08T00:02:38.777182+00:00", "scores": 9038, "docs": 8185, "symbols": 930, "entry_days": 4, "entry_days_with_h5": 0, "latency_min_median": 661.0, "new_info_share": 0.8337021464925869, "read": false, "forced": false}
 {"run_at": "2026-11-09T00:01:34.323934+00:00", "scores": 9146, "docs": 8274, "symbols": 931, "entry_days": 4, "entry_days_with_h5": 0, "latency_min_median": 661.0, "new_info_share": 0.8324950798163131, "read": false, "forced": false}
 {"run_at": "2026-11-10T00:01:46.205831+00:00", "scores": 9233, "docs": 8351, "symbols": 932, "entry_days": 4, "entry_days_with_h5": 0, "latency_min_median": 661.0, "new_info_share": 0.8322322105491173, "read": false, "forced": false}
+{"run_at": "2026-11-11T00:01:40.142632+00:00", "scores": 10719, "docs": 9710, "symbols": 961, "entry_days": 5, "entry_days_with_h5": 0, "latency_min_median": 617.0, "new_info_share": 0.8366452094411793, "read": false, "forced": false}
+{"run_at": "2026-11-12T00:01:57.884096+00:00", "scores": 12107, "docs": 10956, "symbols": 984, "entry_days": 6, "entry_days_with_h5": 1, "latency_min_median": 603.0, "new_info_share": 0.838440571570166, "read": false, "forced": false}
