@@ -179,7 +179,7 @@ trader/
 ```
 
 ## Secrets
-- `.env` (gitignored) is the single source of secrets. Python reads it with python-dotenv. The Alpaca MCP server is started by `scripts/alpaca-mcp.ps1`, which reads the data keys from `.env`, so no user-level environment variables are needed. `scripts/setup-env.ps1` reports which keys are set and never prints values.
+- `.env` (gitignored) is the single source of secrets. Python reads it with python-dotenv. The Alpaca MCP server is started by `scripts/alpaca_mcp.py`, which reads the data keys from `.env`, so no user-level environment variables are needed. `trader env-check` reports which keys are set and never prints values.
 - The Anthropic key is `TRADER_ANTHROPIC_API_KEY`, so it never overrides Claude Code's own login. It is billed to the Claude Console's prepaid API credits, not to claude.ai subscription credits.
 - HTTP errors are raised with the query string removed (`trader.data.http.HttpError`), and CLI tracebacks don't show locals, so keys in request parameters can't leak into logs.
 - Separate key pairs:

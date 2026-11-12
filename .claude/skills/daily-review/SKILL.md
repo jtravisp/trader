@@ -6,8 +6,8 @@ description: Review the trading system's daily run (paper or live). Checks fills
 # Daily review
 
 ## Gather
-1. `uv run trader report daily --date <YYYY-MM-DD>` (defaults to the last trading day).
-2. Read `live/logs/<date>/` for errors and warnings.
+1. `uv run trader live report --day <YYYY-MM-DD>` (default today) writes `live/reports/<date>.md`; read it. `uv run trader live gate` and `uv run trader live halts` give the P4 gate and any halts.
+2. Read the job logs for errors and warnings: `data/logs/forward_<date>.log` and `data/logs/gateway_<date>.log` (one per scheduled run; a missing gateway log on a weekday means the run never started), `data/logs/scheduler.log` (scheduler/uv errors) and `live/logs/alerts.log`. Check the scheduler itself: Windows `Get-ScheduledTask trader-* | Get-ScheduledTaskInfo` (LastRunTime, LastTaskResult); macOS `launchctl print gui/$(id -u)/local.trader.gateway` (or `system/...` for the daemon install).
 3. Use the Alpaca MCP server (read-only data tools) only to cross-check quotes or bars if a fill looks off. Never use order tools.
 
 ## Check, flagging anything abnormal
