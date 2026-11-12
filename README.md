@@ -35,6 +35,56 @@ uv run trader --help
 
 On Windows, `scripts/register-tasks.ps1` registers the nightly and morning jobs with Task Scheduler. Run it from an elevated PowerShell.
 
+## Getting the data
+
+Market data is not in the repo: the lake is about 5 GB, and the vendors' terms don't allow redistribution. You build your own copy under `data/` (gitignored) with your own keys. Every loader refuses rows inside the locked holdout window (`holdout_start` to `holdout_end` in `config/settings.toml`), so a fresh backfill can't leak it.
+
+| Source | Cost | Key in `.env` | Used for |
+|---|---|---|---|
+| Alpaca (paper account) | free | `ALPACA_DATA_KEY`, `ALPACA_DATA_SECRET` | Daily and minute bars, news, corporate actions |
+| SEC EDGAR | free | `SEC_USER_AGENT` (a name and contact email, required by the SEC) | Filings and XBRL fundamentals |
+| FRED | free | `FRED_API_KEY` | Macro regime series |
+| Massive (formerly Polygon) | free tier; Starter $29 for one month (D3) | `MASSIVE_API_KEY` | Delisted tickers and month-end listings for the survivorship-free universe |
+| Anthropic | pay per use, a few $/month | `TRADER_ANTHROPIC_API_KEY` | LLM news scoring (optional) |
+
+The free Alpaca plan can't query the most recent 15 minutes of consolidated (SIP) data, so the forward job runs after the close.
+
+Typical first build, in order:
+
+```sh
+uv run trader ingest all            # Alpaca bars, minute bars, news (long; resumable)
+uv run trader ingest edgar
+uv run trader ingest fred
+uv run trader ingest massive        # reference data, ~4 h on the free tier
+uv run trader build-universe        # point-in-time universe (D20, D21, D25)
+uv run trader quality               # data checks; exits 1 on unexplained failures
+```
+
+`uv run trader <command> --help` documents each step.
+
+## Running trials
+
+The rules (also in `CLAUDE.md`) exist to keep the backtests honest:
+
+1. **Declare first.** Add the strategy, its hypothesis and its parameter grid to `docs/STRATEGIES.md` (and the grid to `src/trader/research/grids.py`) before running anything.
+2. **Run through the registry.** Use the CLI, never an ad hoc script, so every trial is counted:
+   ```sh
+   uv run trader grid --strategy S03 --dry-run   # list grid points not yet run
+   uv run trader grid --strategy S03             # run them
+   uv run trader backtest --strategy S03 --params '{"lookback": 126, "skip": 21}'
+   ```
+   Each point runs three times: base costs, 2× costs, and fills delayed one day. All three are logged.
+3. **Judge against the gate** in `docs/PLAN.md` (P3): Sharpe vs SPY at base and 2× costs, alpha after beta, deflated Sharpe and PBO across every variant tried. Record the verdict in `docs/STRATEGIES.md`, including failures.
+4. **Never touch the holdout** until the single P7 run.
+
+### Published results
+
+- `experiments/trials.csv`: every trial ever run (one row each, failures and superseded runs included), with parameters, git commit, status and metrics. It is regenerated from the local registry (`experiments/registry.db`) after every trial, so the trial counts behind the overfitting statistics can be checked.
+- `experiments/reports/`: a Markdown report and equity-curve chart per backtest command.
+- `docs/STRATEGIES.md`: the verdict on each strategy.
+
+The daily return series behind each trial (`experiments/returns/`) are not published.
+
 ## License
 
 MIT. See `LICENSE`.

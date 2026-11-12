@@ -59,7 +59,20 @@ def record(*, family: str, strategy_id: str, params: dict, cost_mult: float, del
     con.commit()
     RETURNS.mkdir(parents=True, exist_ok=True)
     pl.DataFrame({"date": dates, "net": net}).write_parquet(RETURNS / f"{trial_id}.parquet")
+    export_csv(con)
     return trial_id
+
+
+def export_csv(con: sqlite3.Connection | None = None) -> Path:
+    """Rewrite experiments/trials.csv (all trials, sorted by trial_id) so the full trial count is
+    published in git alongside the reports. The DB stays the source of truth."""
+    con = con or connect()
+    cur = con.execute("SELECT * FROM trials ORDER BY trial_id")
+    cols = [d[0] for d in cur.description]
+    df = pl.DataFrame(cur.fetchall(), schema=cols, orient="row", infer_schema_length=None)
+    out = DB.with_name("trials.csv")
+    df.write_csv(out)
+    return out
 
 
 def family_trials(family: str, cost_mult: float = 1.0, delay: int = 0) -> pl.DataFrame:
