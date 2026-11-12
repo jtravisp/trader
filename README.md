@@ -48,7 +48,7 @@ Two jobs run the system unattended. Both call `uv run --no-sync trader job <name
 
 **macOS:** run `scripts/macos/install-launchd.sh`. It converts the New York times to the Mac's local time.
 - By default it installs LaunchAgents, which run only while you're logged in. `sudo scripts/macos/install-launchd.sh --daemon` installs LaunchDaemons instead, which run whether or not anyone is logged in.
-- A sleeping Mac runs a missed job only when it next wakes, and a closed-lid laptop won't wake for it. Keep the Mac on power with sleep off: `sudo pmset -c sleep 0` (the display can still sleep).
+- A sleeping Mac runs a missed job only when it next wakes, and a closed-lid laptop won't wake for it. A late evening job is worse than a skipped one: run the next morning, it treats that day as its trading day, before the close, so it works from incomplete data. Keep the Mac on power with sleep off: `sudo pmset -c sleep 0` (the display can still sleep).
 - Remove with `--uninstall` (add `--daemon` if you installed daemons).
 
 **Linux:** add both commands to your crontab with `CRON_TZ=America/New_York` (cronie), e.g. `40 9 * * 1-5 cd /path/to/trader && uv run --no-sync trader job gateway`.
