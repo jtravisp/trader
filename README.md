@@ -24,16 +24,36 @@ The current paper strategy is S03, 12-1 momentum on the top-500 universe. Result
 
 ## Setup
 
-Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
+Runs on Windows, macOS and Linux (CI tests all three). Requires Python 3.12 and [uv](https://docs.astral.sh/uv/). On macOS, LightGBM also needs OpenMP: `brew install libomp`.
 
 ```sh
 uv sync
-cp .env.example .env    # then fill in your own keys (Alpaca paper, Anthropic, etc.)
+uv run trader env-check   # creates .env from .env.example; fill in your own keys, then re-run
 uv run pytest
 uv run trader --help
 ```
 
-On Windows, `scripts/register-tasks.ps1` registers the nightly and morning jobs with Task Scheduler. Run it from an elevated PowerShell.
+`env-check` lists which keys are set and never prints their values. Claude Code's Alpaca MCP server (`.mcp.json`, read-only data tools) uses the same `.env`.
+
+## Scheduling the live jobs
+
+Two jobs run the system unattended. Both call `uv run --no-sync trader job <name>`, which runs each step and logs to `data/logs/<name>_<date>.log`.
+
+| Job | When (New York time) | Steps |
+|---|---|---|
+| `forward` | daily 19:00 | forward data + LLM scoring, daily report, tomorrow's target |
+| `gateway` | weekdays 09:40 | the risk gateway executes the latest target (paper unless `live_mode = "live"`) |
+
+**Windows:** run `scripts/register-tasks.ps1` from an elevated PowerShell. The tasks run whether or not you're logged in, so a Windows Update reboot overnight doesn't skip the morning run. The schedule assumes the PC's clock is on Central time; edit the times in the script if it isn't.
+
+**macOS:** run `scripts/macos/install-launchd.sh`. It converts the New York times to the Mac's local time.
+- By default it installs LaunchAgents, which run only while you're logged in. `sudo scripts/macos/install-launchd.sh --daemon` installs LaunchDaemons instead, which run whether or not anyone is logged in.
+- A sleeping Mac runs a missed job only when it next wakes, and a closed-lid laptop won't wake for it. Keep the Mac on power with sleep off: `sudo pmset -c sleep 0` (the display can still sleep).
+- Remove with `--uninstall` (add `--daemon` if you installed daemons).
+
+**Linux:** add both commands to your crontab with `CRON_TZ=America/New_York` (cronie), e.g. `40 9 * * 1-5 cd /path/to/trader && uv run --no-sync trader job gateway`.
+
+To be alerted when a job stops running entirely (PC off, task broken), set `HC_FORWARD_URL` and `HC_GATEWAY_URL` in `.env` to [healthchecks.io](https://healthchecks.io) ping URLs. Set `NTFY_TOPIC` for push alerts on halts and errors.
 
 ## Getting the data
 

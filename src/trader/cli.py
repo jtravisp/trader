@@ -451,6 +451,44 @@ def score_smoke() -> None:
     raise typer.Exit(0 if scorer.smoke_test(log=log) else 1)
 
 
+@app.command("job")
+def job(name: str = typer.Argument(..., help="forward | gateway")) -> None:
+    """Scheduled job (run by Task Scheduler / launchd): every step, logged to data/logs/<name>_<date>.log."""
+    from trader import jobs
+
+    raise typer.Exit(jobs.run(name))
+
+
+ENV_REQUIRED = ["ALPACA_DATA_KEY", "ALPACA_DATA_SECRET", "ALPACA_TRADE_KEY", "ALPACA_TRADE_SECRET",
+                "ALPACA_TRADE_PAPER", "TRADER_ANTHROPIC_API_KEY", "SEC_USER_AGENT", "FRED_API_KEY"]
+ENV_OPTIONAL = ["MASSIVE_API_KEY", "MASSIVE_S3", "NTFY_TOPIC", "NTFY_TOKEN", "HC_FORWARD_URL", "HC_GATEWAY_URL"]
+
+
+@app.command("env-check")
+def env_check() -> None:
+    """Report which .env keys are set (never prints values). Creates .env from .env.example if missing."""
+    import shutil
+
+    from dotenv import dotenv_values
+
+    from trader.config import ROOT
+
+    path = ROOT / ".env"
+    if not path.exists():
+        shutil.copy(ROOT / ".env.example", path)
+        print("Created .env from .env.example. Fill it in, then re-run.")
+        raise typer.Exit(1)
+    vals = dotenv_values(path)
+    missing = 0
+    for k in ENV_REQUIRED + ENV_OPTIONAL:
+        is_set = bool((vals.get(k) or "").strip())
+        required = k in ENV_REQUIRED
+        missing += required and not is_set
+        print(f"  {k:<26} {'set' if is_set else 'MISSING' if required else 'empty (optional)'}")
+    print(f"{missing} required key(s) missing." if missing else "All required keys are set.")
+    raise typer.Exit(1 if missing else 0)
+
+
 def main() -> None:
     app()
 
