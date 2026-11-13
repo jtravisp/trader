@@ -204,6 +204,8 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 5. The user approves going live in conversation (never inferred). The first live gateway run is watched, then reviewed with `daily-review`.
 6. Review written to `docs/reviews/<date>-FALLBACK-live-small.md`.
 
+Design for running and monitoring both accounts: [LIVE_PAPER.md](LIVE_PAPER.md).
+
 ---
 
 ## Open questions

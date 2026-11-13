@@ -10,7 +10,7 @@ The working assumption is that there is no edge until a strategy proves one. Eve
 - **Live:** a nightly job refreshes data, runs the same signal code, and writes a target portfolio. A morning job hands it to the **risk gateway** (`src/trader/risk/`), the only code allowed to place orders. The gateway checks the target against hard limits (`config/limits.yaml`), reconciles with the broker, and supports a kill switch.
 - **LLM features:** news is scored by Claude into schema-validated features. The LLM has no order power. Evidence for LLM features only counts if it comes from documents published after the scoring model's training cutoff.
 
-The current paper strategy is S03, 12-1 momentum on the top-500 universe. Results and failures for all strategies are in `docs/STRATEGIES.md`.
+Paper currently holds 100% SPY (FALLBACK): S03, 12-1 momentum on the top-500 universe, passed research but failed the one-time holdout test (D33). Results and failures for all strategies are in `docs/STRATEGIES.md`.
 
 ## Docs
 
@@ -20,6 +20,7 @@ The current paper strategy is S03, 12-1 momentum on the top-500 universe. Result
 | `docs/PLAN.md` | Phases and the gates each must pass |
 | `docs/DECISIONS.md` | Binding design decisions (D1, D2, ...) |
 | `docs/STRATEGIES.md` | Every strategy, its declared grid, and its result |
+| `docs/LIVE_PAPER.md` | Plan for running and monitoring the live and paper accounts side by side |
 | `docs/RESEARCH.md` | Evidence from the literature, with strength ratings |
 
 ## Setup
