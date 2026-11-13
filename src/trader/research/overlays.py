@@ -52,5 +52,23 @@ class StopMomentum(Momentum):
         return Momentum(lookback=126, skip=21).targets(panel)
 
 
+class FastMomentum(Momentum):
+    """S13 (declared 2026-11-13): S03's score and universe, decided every `hold` sessions."""
+
+    id, family = "S13", "S03"
+
+    def targets(self, panel: Panel) -> np.ndarray:
+        from trader.research.fast import every_k
+        from trader.signals.base import liquid_universe, only_on, top_k_equal_weight
+
+        lb, skip, n = 126, 21, 500
+        c = panel.close
+        score = np.full_like(c, np.nan)
+        score[lb:] = c[lb - skip : c.shape[0] - skip] / c[: c.shape[0] - lb] - 1
+        return only_on(every_k(panel.T, int(self.params["hold"])),
+                       top_k_equal_weight(score, liquid_universe(panel, n=n), n // 10))
+
+
 REGISTRY.setdefault("S07", VolManagedMomentum)
 REGISTRY.setdefault("S08", StopMomentum)
+REGISTRY.setdefault("S13", FastMomentum)

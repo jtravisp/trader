@@ -15,6 +15,7 @@ GRIDS: dict[str, dict[str, list]] = {
     "S03": {"lookback": [63, 126, 189, 252], "skip": [21]},  # 63/189 added 2026-11-04 (PBO)
     "S07": {"vol_target": [0.15, 0.20]},
     "S08": {"stop": [0.10, 0.20]},
+    "S13": {"hold": [5, 10]},  # declared 2026-11-13, before P7
     "S09": {"lookback": [1, 3], "hold": [1, 3]},
     "S10": {"composite": ["roa", "roa_acc_lev"], "hold": [1, 5, 20]},
     "S11": {"window": [60, 252], "hold": [1, 5, 20]},

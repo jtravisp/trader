@@ -45,8 +45,9 @@ def _ts_at(d: date, hh: int, mm: int) -> datetime:
 
 def snapshot_dates() -> list[date]:
     s = settings()
-    sess = calendar.sessions(s.history_start, s.holdout_start)
-    out = [d for d, n in zip(sess, sess[1:] + [s.holdout_start], strict=True) if n.month != d.month]
+    end = lake.horizon()  # holdout_start, or holdout_end during the P7 run
+    sess = calendar.sessions(s.history_start, end)
+    out = [d for d, n in zip(sess, sess[1:] + [end], strict=True) if n.month != d.month]
     return out
 
 
