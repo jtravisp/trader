@@ -22,7 +22,7 @@ orders:
   symbol_allowlist: universe         # only the current point-in-time universe + ETF list
 drawdown:
   daily_loss_halt: 0.04              # halt new orders if equity is down 4% on the day
-  peak_drawdown_halt: 0.15           # halt + human review
+  peak_drawdown_halt: 0.45           # halt + human review (D32: was 0.15; just past S03's worst backtest/replay drawdown, -41%/-43%)
 # Breach handling (decision D9). Normal trading is fully automated.
 on_breach:
   order_violation: refuse_order_and_alert       # rest of the batch proceeds

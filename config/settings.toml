@@ -28,6 +28,7 @@ mode = "paper"
 timezone = "America/New_York"
 # D19: FALLBACK = 100% SPY until a strategy passes the P3 gate. Otherwise a strategy ID from signals.library.
 # D26: S03 promoted research -> paper 2026-11-04 (docs/reviews/2026-11-04-S03-paper.md). Runs only from the frozen tag.
-strategy = "S03"
+# D33: S03 failed the P7 holdout 2026-11-13; paper reverts to FALLBACK (100% SPY) until a candidate passes P7.
+strategy = "FALLBACK"
 strategy_tag = "strategy/S03/v2"  # D28: v2 = v1 + one-time entry
 params = { lookback = 126, skip = 21 }

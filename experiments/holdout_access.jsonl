@@ -1,0 +1,90 @@
+{"ts": "2026-11-13T16:44:25.173792+00:00", "action": "unlock", "dataset": "*", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:44:25.180980+00:00", "action": "read", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:45:27.890620+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:46:30.287904+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:47:32.598280+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:48:35.029042+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:49:37.393407+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:51:39.927423+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:52:42.300005+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:53:44.656522+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:54:47.074374+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:55:49.469284+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:57:51.937899+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:58:54.348143+00:00", "action": "write", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T16:58:54.378867+00:00", "action": "read", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:02:30.370227+00:00", "action": "read", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:02:46.105713+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:03:06.643970+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:03:22.364822+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:03:37.508882+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:03:55.873854+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:09.948476+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:22.735935+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:31.082593+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:34.832647+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:40.719965+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:44.735856+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:49.525582+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:55.312293+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:04:58.985337+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:02.612253+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:06.665318+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:11.647364+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:15.758308+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:19.375957+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:24.077649+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:29.509777+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:33.739482+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:37.254995+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:41.313374+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:45.153089+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:49.488127+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:53.362974+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:05:57.441163+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:01.117002+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:05.871983+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:09.562781+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:14.674518+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:18.509695+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:23.953477+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:27.755875+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:31.882359+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:35.840896+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:40.022681+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:43.818312+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:47.529778+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:55.380784+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:06:59.078760+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:03.055041+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:06.874364+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:12.310855+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:16.224421+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:20.923991+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:25.157752+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:29.609741+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:33.636775+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:37.421444+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:41.128926+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:44.721206+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:48.383151+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:52.444446+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:07:56.847158+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:01.068007+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:07.893470+00:00", "action": "write", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:08.792112+00:00", "action": "read", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:13.903772+00:00", "action": "read", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:14.333511+00:00", "action": "read", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:49.680280+00:00", "action": "read", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:49.925640+00:00", "action": "read", "dataset": "edgar_filings", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:50.001998+00:00", "action": "read", "dataset": "edgar_filings", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:08:50.238112+00:00", "action": "relock", "dataset": "*", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31)"}
+{"ts": "2026-11-13T17:09:45.901549+00:00", "action": "unlock", "dataset": "*", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:09:45.906287+00:00", "action": "read", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:10:49.192370+00:00", "action": "read", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:10:54.223479+00:00", "action": "read", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:10:54.644040+00:00", "action": "read", "dataset": "bars_daily", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:11:31.025885+00:00", "action": "read", "dataset": "massive_tickers", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:11:31.280482+00:00", "action": "read", "dataset": "edgar_filings", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:11:31.355088+00:00", "action": "read", "dataset": "edgar_filings", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
+{"ts": "2026-11-13T17:11:31.560353+00:00", "action": "relock", "dataset": "*", "reason": "P7 holdout run, approved by the user in conversation 2026-11-13 (D31) - data verification of the same run, no re-scoring"}
