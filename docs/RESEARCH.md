@@ -16,6 +16,8 @@ Last updated 2026-11-03. This is a living file: add findings with sources and da
 - **Time-series foundation models (Chronos, TimesFM, etc.), zero-shot on returns.** Generally they don't beat a random walk. Fine-tuned or domain-pretrained versions can match tree ensembles at longer horizons. [moderate; arXiv 2606.27100, 2511.18578]
 - **RL (FinRL-style).** Results and algorithm rankings flip under realistic nonlinear costs. Out-of-sample 2025 Sharpe was mostly negative. [moderate; arXiv 2603.29086]
 
+- **Cross-sectional 12-1-style momentum on the US top 500 (our S03), out of sample.** It passed our P3 gate on 2016–2025 (Sharpe 0.99, DSR 0.999, PBO 0.17), then failed a locked one-year holdout (2025-11..2026-10): Sharpe 0.11 vs SPY 0.96, beta about 3, concentrated in speculative themes. Consistent with momentum's known crash risk when it crowds into high-volatility names (Daniel & Moskowitz 2016). [strong for "this backtest didn't hold up in our holdout"; one year is weak evidence about momentum in general] (2026-11-13)
+
 ### Approaches with promise
 - **Gradient boosting on short-horizon cross-sectional returns.** Huddleston, Liu & Stentoft (J. Fin. Econometrics 2023): 5-min returns, Sharpe 0.98 after costs. Predictability has declined since decimalization and is higher on volatile or illiquid days. [strong]
 - **Intraday momentum on SPY.** Zarattini, Aziz & Barbon: 19.6%/yr, Sharpe 1.33 net, 2007–2024. One author sells day-trading education, and there is no independent replication with post-2024 numbers. [moderate]

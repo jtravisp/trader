@@ -14,8 +14,9 @@ Holdout guard (CLAUDE.md rule 2, D7):
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import polars as pl
@@ -28,6 +29,32 @@ HOLDOUT_LOG = ROOT / "experiments" / "holdout_access.jsonl"
 
 class HoldoutViolation(RuntimeError):
     pass
+
+
+_UNLOCKED: str | None = None  # the P7 approval reference while holdout_unlocked() is active
+
+
+@contextmanager
+def holdout_unlocked(reason: str) -> Iterator[None]:
+    """P7 only (CLAUDE.md rule 2): inside this block, ingests may write holdout-year rows and scans
+    return them (never forward rows unless asked). Every unlock, read and write is logged to
+    experiments/holdout_access.jsonl with the approval reference."""
+    global _UNLOCKED
+    if not reason:
+        raise HoldoutViolation("holdout_unlocked requires a reason (P7 approval reference)")
+    prev, _UNLOCKED = _UNLOCKED, reason
+    _log_unlock("unlock", "*", reason)
+    try:
+        yield
+    finally:
+        _UNLOCKED = prev
+        _log_unlock("relock", "*", reason)
+
+
+def horizon() -> date:
+    """Exclusive end of the data research may fetch or rank: holdout_start, or holdout_end while unlocked."""
+    s = settings()
+    return s.holdout_end if _UNLOCKED else s.holdout_start
 
 
 def _log_unlock(action: str, dataset: str, reason: str) -> None:
@@ -45,6 +72,8 @@ def holdout_mask(known_ts: pl.Expr) -> pl.Expr:
 def clip_window(start, end) -> list[tuple]:
     """Split a [start, end) date window into the parts outside the holdout year."""
     s = settings()
+    if _UNLOCKED:
+        return [(start, end)] if start < end else []
     out = []
     if start < s.holdout_start:
         out.append((start, min(end, s.holdout_start)))
@@ -55,7 +84,7 @@ def clip_window(start, end) -> list[tuple]:
 
 def drop_holdout(df: pl.DataFrame) -> tuple[pl.DataFrame, int]:
     """Ingest-side clamp: remove holdout-window rows before they reach the lake."""
-    if df.is_empty():
+    if df.is_empty() or _UNLOCKED:
         return df, 0
     keep = df.filter(~holdout_mask(pl.col("known_ts")))
     return keep, df.height - keep.height
@@ -91,6 +120,8 @@ def write(
         return 0
     df = _validate(df, dataset)
     n_hold = df.filter(holdout_mask(pl.col("known_ts"))).height
+    if n_hold and _UNLOCKED:
+        unlock_holdout, reason = True, reason or _UNLOCKED
     if n_hold:
         if not unlock_holdout:
             raise HoldoutViolation(
@@ -143,6 +174,8 @@ def scan(
     if not files:
         raise FileNotFoundError(f"dataset {dataset} is empty")
     lf = pl.scan_parquet(files, hive_partitioning=False)
+    if _UNLOCKED:
+        unlock_holdout, reason = True, reason or _UNLOCKED
     s = settings()
     pre = pl.col("known_ts") < pl.lit(s.holdout_start_ts, TS)
     fwd = pl.col("known_ts") >= pl.lit(s.holdout_end_ts, TS)

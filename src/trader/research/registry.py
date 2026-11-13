@@ -45,7 +45,7 @@ def connect() -> sqlite3.Connection:
 
 def record(*, family: str, strategy_id: str, params: dict, cost_mult: float, delay: int, data_start: str,
            data_end: str, leak_check: str, status: str, metrics: dict, dates: np.ndarray, net: np.ndarray,
-           sharpe_daily: float, notes: str = "") -> str:
+           sharpe_daily: float, notes: str = "", holdout_touched: bool = False) -> str:
     now = datetime.now(UTC)
     key = json.dumps([strategy_id, params, cost_mult, delay, now.isoformat()], sort_keys=True)
     trial_id = f"{now:%Y%m%d-%H%M%S}-{hashlib.sha1(key.encode()).hexdigest()[:6]}"
@@ -54,7 +54,7 @@ def record(*, family: str, strategy_id: str, params: dict, cost_mult: float, del
     con.execute(
         "INSERT INTO trials VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (trial_id, now.isoformat(), family, strategy_id, json.dumps(params, sort_keys=True), cost_mult, delay,
-         gh, int(dirty), data_start, data_end, 0, leak_check, status, json.dumps(metrics), sharpe_daily, notes),
+         gh, int(dirty), data_start, data_end, int(holdout_touched), leak_check, status, json.dumps(metrics), sharpe_daily, notes),
     )
     con.commit()
     RETURNS.mkdir(parents=True, exist_ok=True)
@@ -76,10 +76,11 @@ def export_csv(con: sqlite3.Connection | None = None) -> Path:
 
 
 def family_trials(family: str, cost_mult: float = 1.0, delay: int = 0) -> pl.DataFrame:
-    """Every trial of a family at a given cost/delay setting (variants count toward DSR/PBO)."""
+    """Every pre-holdout trial of a family at a given cost/delay setting (variants count toward DSR/PBO)."""
     con = connect()
     rows = con.execute(
-        "SELECT trial_id, strategy_id, params, sharpe_daily, status FROM trials WHERE family=? AND cost_mult=? AND delay=?",
+        "SELECT trial_id, strategy_id, params, sharpe_daily, status FROM trials WHERE family=? AND cost_mult=? AND delay=? "
+        "AND holdout_touched=0",  # P7 holdout trials never feed research DSR/PBO
         (family, cost_mult, delay),
     ).fetchall()
     return pl.DataFrame(rows, schema=["trial_id", "strategy_id", "params", "sharpe_daily", "status"], orient="row")

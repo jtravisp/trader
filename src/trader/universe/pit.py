@@ -142,7 +142,7 @@ def rank_universe(lines: pl.DataFrame, t: pl.DataFrame, n: int = 1000, window: i
     b = window_bars(lines, ["close", "volume"]).with_columns((pl.col("close") * pl.col("volume")).alias("dv"))
     tick_line = dict(zip(lines["ticker"], lines["line_id"], strict=True))
     out = []
-    sess = calendar.sessions(START - timedelta(days=120), settings().holdout_start)
+    sess = calendar.sessions(START - timedelta(days=120), lake.horizon())
     for snap in sorted(t["snapshot"].unique().to_list()):
         listed = set(t.filter(pl.col("snapshot") == snap)["ticker"]) & set(tick_line)
         idx = sess.index(snap) if snap in sess else None
@@ -198,18 +198,21 @@ def build(log=print, fetch: bool = True) -> pl.DataFrame:
     return pit
 
 
-def load_pit_panel(max_rank: int = 1000):
+def load_pit_panel(max_rank: int = 1000, pit: pl.DataFrame | None = None, lines: pl.DataFrame | None = None):
     """Backtest panel over every line that was ever in the top `max_rank`, plus the ETF list.
     Each line's bars are stitched across its tickers (latest ticker wins on overlapping dates);
     the column is named after the line's latest ticker. pit_rank[t, j] = rank from the latest
-    snapshot <= date t (inf if not a member)."""
+    snapshot <= date t (inf if not a member). `pit`/`lines` override the lake datasets (P7 builds
+    the holdout-year universe in memory so the research datasets stay untouched)."""
     import numpy as np
 
     from trader.backtest.panel import Panel, panel_from_frame
     from trader.universe.build import etf_list
 
-    pit = lake.scan(PIT).filter(pl.col("rank") <= max_rank).collect()
-    lines = lake.scan(LINES).filter(pl.col("line_id").is_in(pit["line_id"].unique().to_list())).collect()
+    all_lines = lines
+    pit = (lake.scan(PIT).collect() if pit is None else pit).filter(pl.col("rank") <= max_rank)
+    lines = (lake.scan(LINES).collect() if all_lines is None else all_lines).filter(
+        pl.col("line_id").is_in(pit["line_id"].unique().to_list()))
     order = lines.sort("first_snapshot").group_by("line_id", maintain_order=True).agg(
         pl.col("ticker"), pl.col("ticker").last().alias("name")
     )
@@ -251,11 +254,11 @@ def load_pit_panel(max_rank: int = 1000):
         if cur is not None:
             rank[i] = cur
     return Panel(p.dates, p.symbols, p.open, p.close, p.raw_close, p.dollar_volume, p.is_etf,
-                 {**p.meta, "universe": "pit", "lines": names, "delist_ret": delist_returns(p, names)},
+                 {**p.meta, "universe": "pit", "lines": names, "delist_ret": delist_returns(p, names, all_lines)},
                  rank, earnings_events(p, names), {"low": low})
 
 
-def delist_classes(p, names: dict[str, str]) -> pl.DataFrame:
+def delist_classes(p, names: dict[str, str], lines: pl.DataFrame | None = None) -> pl.DataFrame:
     """Exit classification (universe/delist.py) for every panel column whose bars end early."""
     import numpy as np
 
@@ -282,7 +285,7 @@ def delist_classes(p, names: dict[str, str]) -> pl.DataFrame:
     t = snapshots()
     meta = t.sort("snapshot").group_by("ticker").agg(pl.col("primary_exchange").last().alias("exchange"), pl.col("name").last())
     ex = ex.join(meta, on="ticker", how="left")
-    lines = lake.scan(LINES).collect().with_columns(cik=pl.col("cik").cast(pl.Int64, strict=False))
+    lines = (lake.scan(LINES).collect() if lines is None else lines).with_columns(cik=pl.col("cik").cast(pl.Int64, strict=False))
     cl = lines.drop_nulls("cik").group_by("cik").agg(pl.col("last_snapshot").max().alias("cik_last_listed"))
     f = lake.scan(edgar.FILINGS).filter(pl.col("cik").is_in(ex["cik"].drop_nulls().to_list())).select(
         "cik", "form", "items", "filing_date").collect()
@@ -290,8 +293,8 @@ def delist_classes(p, names: dict[str, str]) -> pl.DataFrame:
     return delist.classify(ex, f, cl, sic)
 
 
-def delist_returns(p, names: dict[str, str]) -> dict[int, float]:
-    d = delist_classes(p, names)
+def delist_returns(p, names: dict[str, str], lines: pl.DataFrame | None = None) -> dict[int, float]:
+    d = delist_classes(p, names, lines)
     return dict(zip(d["col"].to_list(), d["delist_ret"].to_list(), strict=True)) if d.height else {}
 
 

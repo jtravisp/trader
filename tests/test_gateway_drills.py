@@ -134,10 +134,18 @@ def test_drill_daily_loss_halt_blocks_buys_and_auto_resumes(env):
     assert res2.status == "executed" and b2.orders
 
 
+def _below_halt(pct_past: float) -> float:
+    """Equity `pct_past` (fraction) below the configured peak-drawdown halt, from a 1000 peak."""
+    from trader.config import limits
+
+    return round(1000 * (1 - limits()["drawdown"]["peak_drawdown_halt"] - pct_past), 2)
+
+
 def test_drill_peak_drawdown_needs_human(env):
     con, alerts = env
     _run(con, FakeBroker(equity=1000), "r0", {"$CASH": 1.0})  # establishes peak 1000
-    b = FakeBroker(equity=840, last_equity=850)
+    e = _below_halt(0.01)
+    b = FakeBroker(equity=e, last_equity=e + 10)
     assert _run(con, b, "r1", {"SPY": 0.3}).status == "halted"
     assert _run(con, b, "r2", {"SPY": 0.3}, now=datetime(2026, 11, 9, 10, 0, tzinfo=NY)).status == "halted"
     assert b.orders == []
@@ -152,17 +160,18 @@ def test_paper_peak_drawdown_alerts_and_continues(env):
     con, _ = env
     count = lambda: con.execute("SELECT COUNT(*) FROM events WHERE kind='peak_drawdown_paper'").fetchone()[0]
     _run(con, FakeBroker(equity=1000), "r0", {"$CASH": 1.0}, paper=True)  # peak 1000
-    b = FakeBroker(equity=840, last_equity=850)
+    e1, e2, e3 = _below_halt(0.01), _below_halt(0.02), _below_halt(0.06)
+    b = FakeBroker(equity=e1, last_equity=e1 + 10)
     assert _run(con, b, "r1", {"SPY": 0.3}, paper=True).status == "executed"
     assert b.orders and not state.active_halts(con, "2026-11-04") and count() == 1
-    _run(con, FakeBroker(equity=830, last_equity=840), "r2", {"SPY": 0.3}, paper=True,
+    _run(con, FakeBroker(equity=e2, last_equity=e1), "r2", {"SPY": 0.3}, paper=True,
          now=datetime(2026, 11, 5, 10, 0, tzinfo=NY))
-    assert count() == 1  # same band (-16% -> -17%): no repeat alert
-    _run(con, FakeBroker(equity=790, last_equity=830), "r3", {"SPY": 0.3}, paper=True,
+    assert count() == 1  # 1 point further down, same 5-point band: no repeat alert
+    _run(con, FakeBroker(equity=e3, last_equity=e2), "r3", {"SPY": 0.3}, paper=True,
          now=datetime(2026, 11, 6, 10, 0, tzinfo=NY))
-    assert count() == 2  # -21%: next band
+    assert count() == 2  # 5 points further: next band
     # without the paper flag (live) the halt still holds
-    assert _run(con, FakeBroker(equity=790, last_equity=790), "r4", {"SPY": 0.3},
+    assert _run(con, FakeBroker(equity=e3, last_equity=e3), "r4", {"SPY": 0.3},
                 now=datetime(2026, 11, 9, 10, 0, tzinfo=NY)).status == "halted"
 
 

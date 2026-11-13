@@ -26,8 +26,8 @@ MINUTE = "bars_minute"
 
 
 def research_end() -> date:
-    """Historical ingests stop before the holdout (exclusive end)."""
-    return settings().holdout_start
+    """Historical ingests stop before the holdout (exclusive end); at holdout_end during the P7 run."""
+    return lake.horizon()
 
 
 def _iso(d: date | datetime) -> str:

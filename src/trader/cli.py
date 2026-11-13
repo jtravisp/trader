@@ -451,6 +451,19 @@ def score_smoke() -> None:
     raise typer.Exit(0 if scorer.smoke_test(log=log) else 1)
 
 
+@app.command("holdout")
+def holdout(approved: bool = typer.Option(False, "--approved", help="confirm the user approved the one-time P7 run (D31)")) -> None:
+    """P7: run the frozen candidate(s) ONCE on the locked holdout year (src/trader/research/holdout.py)."""
+    if not approved:
+        log("refusing: the P7 holdout run needs explicit user approval (--approved). It can only be run once.")
+        raise typer.Exit(2)
+    from trader.research import holdout as ho
+
+    p = ho.prepare(log=log)
+    for path in ho.evaluate(p, log=log):
+        log(f"report: {path}")
+
+
 @app.command("job")
 def job(name: str = typer.Argument(..., help="forward | gateway")) -> None:
     """Scheduled job (run by Task Scheduler / launchd): every step, logged to data/logs/<name>_<date>.log."""

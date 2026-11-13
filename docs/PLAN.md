@@ -176,6 +176,8 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - Pass if the holdout Sharpe is > 0.5, is ≥ 50% of the in-sample Sharpe, and the max drawdown is within 1.5× the in-sample max drawdown.
 - If it fails, do **not** tweak and rerun the holdout. Go back to research. The holdout is then spent: the next holdout becomes forward paper data.
 
+**Status (2026-11-13): run once; S03 FAILED (D31, D33).** Holdout Sharpe 0.11 vs SPY 0.96, CAGR −9.7%, max DD −40.8%. S13 (faster S03) was tested first and did not qualify. Paper is back on FALLBACK (SPY); the holdout is spent.
+
 ## P8 — Paper trading the final candidate (≥ 3 months)
 - Use the full live stack. The daily review runs every trading day, and a weekly summary compares results against the backtest's expected distribution.
 - **Gate (`promote-strategy` skill):**
