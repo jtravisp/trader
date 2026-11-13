@@ -192,9 +192,17 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - Use a separate cash account (no margin) with a fixed deposit. Treat that deposit as the maximum loss.
 - Months 1–3: the full $200 (D10). Add new deposits only if live tracks paper and the modeled slippage holds; at most 2x per step.
 - Hard rules:
-  - Drawdown of 15% from peak → automatic halt and review.
+  - Drawdown of 45% from peak → automatic halt and review (D32; was 15%).
   - Strategy drift (live outside the 95% band for 20 days) → revert to SPY.
 - Taxes: log every fill, and see a CPA before year-end. Watch wash sales: frequent rebalancing around losses can trigger them.
+
+**Going live on FALLBACK (D34).** No candidate has passed P7, so live starts on 100% SPY. FALLBACK claims no edge, so the edge criteria (P7, the 60-day band, P8) don't apply. The gate tests operations only:
+1. The P4 gate passes (10 clean days, ≥ 2 fill days with exec TE < 10 bp) on FALLBACK paper.
+2. **Paper and live keep separate gateway state.** Today `live/orders.db` holds paper's orders, equity peak and halts. A live run against it would reconcile live positions against paper orders and halt. Split the state per account (e.g. `live/paper/` and `live/live/`) and let paper keep running alongside live with its own key pair. Add a drill test.
+3. A separate Alpaca **cash** account (no margin), with a $200 deposit, settled. Live key pair in `.env` on this host only; `trader env-check` passes; `[live] mode = "live"`. The gateway already refuses live keys unless the mode is `live`.
+4. A dry run on live keys (`trader live execute` without `--submit`) shows the expected SPY orders and no refusals.
+5. The user approves going live in conversation (never inferred). The first live gateway run is watched, then reviewed with `daily-review`.
+6. Review written to `docs/reviews/<date>-FALLBACK-live-small.md`.
 
 ---
 

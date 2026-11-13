@@ -23,6 +23,9 @@ Stages: `research → paper → live-small → live-full`. Promotion requires pa
 - [ ] Live account is a separate cash account. Deposit = the max acceptable loss. Live keys exist only on the production host.
 - [ ] The user has explicitly approved going live in this conversation. **Never infer approval.**
 
+## paper → live-small on FALLBACK (100% SPY, D34)
+FALLBACK claims no edge, so the P7, 60-day and band criteria above don't apply. Use the operational checklist in docs/PLAN.md P9 ("Going live on FALLBACK") instead: P4 pass, per-account gateway state, separate cash account, live keys only on the production host, a clean dry run on live keys, explicit user approval, and a watched first run.
+
 ## live-small → scale-up
 - [ ] ≥ 3 months live at the current size.
 - [ ] Live tracks paper within bounds. Live slippage ≤ the model's.
