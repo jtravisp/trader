@@ -16,13 +16,28 @@ from pathlib import Path
 from trader.config import NY, ROOT
 
 # name -> steps (trader CLI args). The job fails with the first failing step's exit code.
+# "forward" and "gateway" expand per enabled account (D36), see steps().
 JOBS: dict[str, list[list[str]]] = {
-    # evening (19:00 ET, daily): forward data + LLM scoring, the daily report, tomorrow's target
-    "forward": [["forward"], ["live", "report"], ["live", "target"]],
-    # morning (09:40 ET, weekdays): the risk gateway executes the latest target. Outside the
-    # trading window or on a holiday it sees the market closed and does nothing.
-    "gateway": [["live", "execute", "--submit"]],
+    # evening (19:00 ET, daily): forward data + LLM scoring once, then per account the daily report and
+    # tomorrow's target
+    "forward": [["forward"]],
+    # morning (09:40 ET, weekdays): per account, live first, the risk gateway executes the latest target.
+    # Outside the trading window or on a holiday it sees the market closed and does nothing.
+    "gateway": [],
 }
+
+
+def steps(name: str, accounts: list[str] | None = None) -> list[list[str]]:
+    if name not in ("forward", "gateway"):
+        return JOBS[name]
+    if accounts is None:
+        from trader.live.accounts import enabled
+
+        accounts = enabled()
+    if name == "forward":
+        return [*JOBS["forward"], *[s for a in accounts for s in (["live", "--account", a, "report"],
+                                                                  ["live", "--account", a, "target"])]]
+    return [["live", "--account", a, "execute", "--submit"] for a in accounts]
 
 
 def log_path(name: str, now: datetime | None = None, root: Path = ROOT) -> Path:
@@ -38,7 +53,7 @@ def run(name: str, root: Path = ROOT, python: str = sys.executable) -> int:
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     codes = []
     with path.open("ab") as f:
-        for args in JOBS[name]:
+        for args in steps(name):
             f.write(f"[{datetime.now(NY):%H:%M:%S}] job {name}: trader {' '.join(args)}\n".encode())
             f.flush()
             p = subprocess.run([python, "-m", "trader", *args], cwd=root, env=env, stdout=f, stderr=subprocess.STDOUT)

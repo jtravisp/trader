@@ -59,9 +59,10 @@ def test_missing_prices_skip():
     assert a["missing_prices"] == ["ABC"] and "exec_te_bps" not in a
 
 
-def _r(d, te, build_up=False, halts=(), errors=(), n_fills=5, te_ref="exec"):
+def _r(d, te, build_up=False, halts=(), errors=(), n_fills=5, te_ref="exec", n_exit_fills=0):
     return {"date": f"2026-11-{d:02d}", "exec_te_bps": te, "build_up": build_up, "halts": list(halts),
-            "errors": list(errors), "n_fills": n_fills, "te_ref": te_ref, "timing_bps": 1.0}
+            "errors": list(errors), "n_fills": n_fills, "te_ref": te_ref, "timing_bps": 1.0,
+            "n_exit_fills": n_exit_fills}
 
 
 ALL = lambda d: True  # noqa: E731
@@ -99,3 +100,31 @@ def test_gate_streak_resets():
 def test_gate_te_share():
     recs = [_r(d, 20.0 if d <= 2 else 1.0) for d in range(1, 11)]  # 8/10 within
     assert not gate(recs, is_session=ALL)["pass"]
+
+
+def test_gate_excludes_exit_fill_days_whatever_their_result():
+    # D35: selling a retired strategy's names says nothing about how the current target executes
+    recs = [_r(d, 0.0, n_fills=0) for d in range(1, 9)] + [_r(9, -15.0, n_exit_fills=21), _r(10, -4.8, n_exit_fills=21)]
+    g = gate(recs, is_session=ALL)
+    assert g["clean_streak"] == 10 and g["te_days"] == 0 and g["excluded_fill_days"] == 2 and not g["pass"]
+    recs += [_r(11, 2.0), _r(12, -3.0)]  # two in-target fill days
+    g = gate(recs, is_session=ALL)
+    assert g["te_days"] == 2 and g["te_within_share"] == 1.0 and g["pass"]
+
+
+def test_gate_pre_d35_fill_records_do_not_count():
+    recs = [_r(d, 1.0) for d in range(1, 11)]
+    for r in recs:
+        del r["n_exit_fills"]
+    assert gate(recs, is_session=ALL)["te_days"] == 0
+
+
+def test_exit_fills():
+    from types import SimpleNamespace as F
+
+    from trader.monitor.daily import exit_fills
+
+    fills = [F(symbol="SPY"), F(symbol="ZBRA"), F(symbol="W")]
+    assert exit_fills(fills, {"SPY": 1.0}) == 2
+    assert exit_fills(fills, {"SPY": 0.5, "ZBRA": 0.25, "W": 0.25}) == 0
+    assert exit_fills(fills, None) is None

@@ -24,11 +24,22 @@ monthly_budget_usd = 7.0   # D11, raised by D29 (was 3.0); enforced in trader.ll
 daily_budget_usd = 0.35    # ~= 7.0 / 21 trading days (D29; was 0.14)
 
 [live]
-mode = "paper"
 timezone = "America/New_York"
+# Strategy defaults shared by every account; [accounts.<name>] may override strategy / strategy_tag / params.
 # D19: FALLBACK = 100% SPY until a strategy passes the P3 gate. Otherwise a strategy ID from signals.library.
 # D26: S03 promoted research -> paper 2026-11-04 (docs/reviews/2026-11-04-S03-paper.md). Runs only from the frozen tag.
 # D33: S03 failed the P7 holdout 2026-11-13; paper reverts to FALLBACK (100% SPY) until a candidate passes P7.
 strategy = "FALLBACK"
 strategy_tag = "strategy/S03/v2"  # D28: v2 = v1 + one-time entry
 params = { lookback = 126, skip = 21 }
+
+# D36: one block per broker account, each with its own state in live/<account>/ (docs/LIVE_PAPER.md).
+# The endpoint follows the account name; `[live] mode` is gone.
+[accounts.paper]
+enabled = true
+key_prefix = "ALPACA_TRADE"        # ALPACA_TRADE_KEY / _SECRET (paper keys)
+
+[accounts.live]
+enabled = false                    # true only after the user approves going live (PLAN.md P9, D34)
+key_prefix = "ALPACA_LIVE_TRADE"   # ALPACA_LIVE_TRADE_KEY / _SECRET (cash account, this host only)
+strategy = "FALLBACK"              # stays SPY until a strategy passes a forward holdout + P8

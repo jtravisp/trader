@@ -1,5 +1,6 @@
 """Broker access for the risk gateway. CLAUDE.md rule 1: this package is the ONLY place that may
-call Alpaca order endpoints. Uses the TRADE key pair (ALPACA_TRADE_*), never the data keys."""
+call Alpaca order endpoints. Uses the account's TRADE key pair (paper: ALPACA_TRADE_*, live:
+ALPACA_LIVE_TRADE_*), never the data keys."""
 
 from __future__ import annotations
 
@@ -60,12 +61,28 @@ def _order(o: dict) -> BrokerOrder:
 class AlpacaBroker:
     """alpaca-py TradingClient with raw_data=True (its enums lag new exchanges, e.g. TXSE)."""
 
-    def __init__(self) -> None:
+    def __init__(self, account: str = "paper", key_prefix: str = "ALPACA_TRADE") -> None:
+        """The endpoint follows the account name, never the keys (D36): paper keys can't reach the live
+        endpoint and live keys can't reach paper (Alpaca answers 401)."""
         from alpaca.trading.client import TradingClient
 
-        paper = secret("ALPACA_TRADE_PAPER").lower() != "false"
-        self.paper = paper
-        self.tc = TradingClient(secret("ALPACA_TRADE_KEY"), secret("ALPACA_TRADE_SECRET"), paper=paper, raw_data=True)
+        if account not in ("paper", "live"):
+            raise ValueError(f"unknown account {account!r}")
+        if account == "paper" and secret("ALPACA_TRADE_PAPER", required=False).lower() == "false":
+            raise RuntimeError("ALPACA_TRADE_PAPER=false but this is the paper account: move live keys to ALPACA_LIVE_TRADE_*")
+        self.account_name = account
+        self.paper = account == "paper"
+        self.tc = TradingClient(secret(f"{key_prefix}_KEY"), secret(f"{key_prefix}_SECRET"), paper=self.paper, raw_data=True)
+
+    def cash_account_ok(self) -> tuple[bool, str]:
+        """P9 live requirement: a cash account (multiplier 1, no margin), not blocked."""
+        a = self.tc.get_account()
+        mult = str(a.get("multiplier", ""))
+        if mult != "1":
+            return False, f"multiplier {mult} (need 1: cash account, no margin)"
+        if a.get("trading_blocked") or a.get("account_blocked"):
+            return False, "account or trading blocked"
+        return True, "cash account"
 
     def account(self) -> Account:
         a = self.tc.get_account()

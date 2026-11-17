@@ -67,7 +67,7 @@ def settings() -> Settings:
         scoring_model_cutoff=llm["scoring_model_cutoff"],
         prompt_version=llm["prompt_version"],
         llm_monthly_budget_usd=float(llm.get("monthly_budget_usd", 3.0)),
-        live_mode=live["mode"],
+        live_mode=live.get("mode", "paper"),  # D36: superseded by [accounts.*]; kept for old configs
         raw=cfg,
     )
 
