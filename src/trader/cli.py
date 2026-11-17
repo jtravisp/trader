@@ -352,10 +352,21 @@ def live_execute(run_id: str = typer.Option("", help="default: latest pending ru
     from datetime import datetime as dt
 
     from trader.config import limits
+    from trader.live import accounts
     from trader.risk import gateway, state
     from trader.universe.build import etf_list, load_seed
 
+    if submit and not accounts.config(accounts.current)["enabled"]:
+        log(f"REFUSED: account {accounts.current} is not enabled in settings.toml [accounts.{accounts.current}]")
+        raise typer.Exit(2)
     con = state.connect()
+    if not run_id:
+        row = con.execute("SELECT run_id FROM runs WHERE status IN ('target_written','incomplete') ORDER BY created_at DESC LIMIT 1").fetchone()
+        if not row:
+            log("no pending target")
+            return
+        run_id = row[0]
+        # older    con = state.connect()
     if not run_id:
         row = con.execute("SELECT run_id FROM runs WHERE status IN ('target_written','incomplete') ORDER BY created_at DESC LIMIT 1").fetchone()
         if not row:
@@ -367,11 +378,6 @@ def live_execute(run_id: str = typer.Option("", help="default: latest pending ru
         con.commit()
         if n:
             log(f"marked {n} older pending target(s) superseded")
-    from trader.live import accounts
-
-    if submit and not accounts.config(accounts.current)["enabled"]:
-        log(f"REFUSED: account {accounts.current} is not enabled in settings.toml [accounts.{accounts.current}]")
-        raise typer.Exit(2)
     allow = set(etf_list()) | set(load_seed()["symbol"].to_list())
     broker = _broker()
     res = gateway.run(run_id, broker, con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit, paper=broker.paper)
