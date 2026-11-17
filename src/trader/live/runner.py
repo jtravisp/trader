@@ -13,7 +13,6 @@ import numpy as np
 import polars as pl
 
 from trader import calendar
-from trader.config import settings
 from trader.risk import state
 
 FALLBACK = "FALLBACK"
@@ -91,8 +90,10 @@ def compute_target(strategy_id: str, params: dict, latest: bool = False) -> dict
 
 
 def run(log=print) -> str | None:
-    live = settings().raw["live"]
-    sid, params = live.get("strategy", FALLBACK), live.get("params", {})
+    from trader.live import accounts
+
+    live = accounts.strategy(accounts.current)  # [accounts.<name>] over the shared [live] defaults (D36)
+    sid, params = live.get("strategy") or FALLBACK, live.get("params") or {}
     d = last_closed_session()
     run_id = f"{sid}-{d.isoformat()}"
     con = state.connect()
@@ -100,7 +101,7 @@ def run(log=print) -> str | None:
         log(f"runner: {run_id} already written")
         return run_id
     if sid != FALLBACK:
-        ok, why = pin_ok(live.get("strategy_tag", ""))
+        ok, why = pin_ok(live.get("strategy_tag") or "")
         if not ok:
             from trader.monitor.alerts import notify
 

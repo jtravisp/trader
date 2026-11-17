@@ -152,6 +152,7 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 - Alerts: ntfy push working (`trader live test-alert`). Refusals/halts/failures push; turnover deferrals are log-only; a low-priority daily summary pushes after the evening report.
 - **Replay mode (2026-11-05, `trader replay`):** runs the unchanged runner + gateway over past sessions with a simulated broker (fills at the open ± modeled cost, T+1 settlement) and compares with the engine. S03 over 2025-01..2025-10 with human halts auto-cleared: +47.9% vs engine +49.7%, daily correlation 0.985, mean daily difference −0.4 bps (the rest is the 60% turnover cap spreading rebalances over 2 days, and leftover cash). With the real halt policy, the 15% peak-drawdown halt fires on 2025-02-26 (8 weeks in) and S03 then fell to −43% from peak by 2025-04-07.
 - First paper orders: 2026-11-04 09:40 ET, FALLBACK builds 60% SPY on day 1 (5 x $24 chunks), the rest on day 2.
+- **2026-11-17 (D35):** the S03 liquidation fill days (11/16 −15.0 bps, 11/17 −4.8 bps) don't count toward the TE share: fills in names outside the target are exit fills. The gate now waits for 2 SPY-only fill days, expected as FALLBACK finishes building SPY (turnover cap).
 - **2026-11-10 (D30):** the TE bound is now measured against the submit-minute (09:40) price on days with fills (≥ 2 needed in the streak); open-to-09:40 drift is reported as timing. Under the old open-based measure every fill day failed (−38 to +36 bps); vs the 09:40 price, slippage was −1 to +7 bps per day. S03 rebalances at month-end, so the first fill days that count are expected around 2026-11-30 / 12-01.
 
 ## P5 — ML ranker (weeks 5–9)
@@ -198,7 +199,7 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 
 **Going live on FALLBACK (D34).** No candidate has passed P7, so live starts on 100% SPY. FALLBACK claims no edge, so the edge criteria (P7, the 60-day band, P8) don't apply. The gate tests operations only:
 1. The P4 gate passes (10 clean days, ≥ 2 fill days with exec TE < 10 bp) on FALLBACK paper.
-2. **Paper and live keep separate gateway state.** Today `live/orders.db` holds paper's orders, equity peak and halts. A live run against it would reconcile live positions against paper orders and halt. Split the state per account (e.g. `live/paper/` and `live/live/`) and let paper keep running alongside live with its own key pair. Add a drill test.
+2. ✅ (D36, 2026-11-17) **Paper and live keep separate gateway state.** Today `live/orders.db` holds paper's orders, equity peak and halts. A live run against it would reconcile live positions against paper orders and halt. Split the state per account (e.g. `live/paper/` and `live/live/`) and let paper keep running alongside live with its own key pair. Add a drill test.
 3. A separate Alpaca **cash** account (no margin), with a $200 deposit, settled. Live key pair in `.env` on this host only; `trader env-check` passes; `[live] mode = "live"`. The gateway already refuses live keys unless the mode is `live`.
 4. A dry run on live keys (`trader live execute` without `--submit`) shows the expected SPY orders and no refusals.
 5. The user approves going live in conversation (never inferred). The first live gateway run is watched, then reviewed with `daily-review`.

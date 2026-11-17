@@ -1,6 +1,6 @@
 # Running live and paper side by side
 
-Plan for P9 (D34). Live starts with $200 on FALLBACK (100% SPY). Paper keeps running on its own account, first on FALLBACK, later on whatever candidate is under forward test. Nothing here is built yet. Live orders need the user's explicit approval (PLAN.md P9 step 5).
+Plan for P9 (D34). Live starts with $200 on FALLBACK (100% SPY). Paper keeps running on its own account, first on FALLBACK, later on whatever candidate is under forward test. **Status (2026-11-17, D36):** parts 1 (accounts and state), 2 (jobs, heartbeats) and the alert tags of part 4 are built; the live account check covers cash/no-margin only. Part 3 (`live compare`) and the other live-only checks in part 4 are not built yet. Live orders need the user's explicit approval (PLAN.md P9 step 5).
 
 ## Goals
 1. **Isolation:** a problem in one account can never trade, halt or reconcile the other.
@@ -24,14 +24,14 @@ key_prefix = "ALPACA_LIVE"
 ```
 
 - **Keys:**
-  - Paper uses `ALPACA_PAPER_TRADE_KEY/SECRET`; live uses `ALPACA_LIVE_TRADE_KEY/SECRET`. The old `ALPACA_TRADE_*` names still work for paper, so nothing breaks before the move.
+  - Paper keeps `ALPACA_TRADE_KEY/SECRET` (as built, D36); live uses `ALPACA_LIVE_TRADE_KEY/SECRET`.
   - `env-check` reports each account separately.
   - The broker refuses to start if the endpoint doesn't match the account name: live keys on `paper`, or paper keys on `live`. This replaces today's `mode` check.
 - **State:**
   - Each account gets its own `live/<account>/` folder holding `orders.db`, `reports/`, `logs/` and `KILL`.
   - The current `live/orders.db` and `live/reports/` move to `live/paper/` unchanged, so the P4 record and the equity peak carry over.
   - The kill switch works per account. `trader live kill --account live` stops only live, and `--all` stops both.
-- **CLI:** every `trader live …` command takes `--account paper|live` and defaults to `paper`. A command that sends orders with `--account live` also needs `enabled = true`.
+- **CLI:** every `trader live …` command takes `--account paper|live` before the subcommand (`trader live --account live execute`) and defaults to `paper`. A command that sends orders with `--account live` also needs `enabled = true`.
 - **Limits:** the existing `limits.yaml` limits apply to both accounts. The only difference is in `on_breach`: paper keeps alert-and-continue at the peak-drawdown halt (D29), and live halts until a human clears it.
 
 ## 2. Jobs

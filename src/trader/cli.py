@@ -276,17 +276,34 @@ def sanity(seeds: int = 100, only: str = typer.Option("", help="san01|san02|san0
     raise typer.Exit(0 if ok else 1)
 
 
-gw_app = typer.Typer(no_args_is_help=True, help="Live runner and risk gateway (paper unless mode=live).")
+gw_app = typer.Typer(no_args_is_help=True, help="Live runner and risk gateway, per account: trader live --account paper|live <cmd>.")
 app.add_typer(gw_app, name="live")
 
 
+@gw_app.callback()
+def _account(account: str = typer.Option("paper", "--account", help="paper | live: whose state, keys and reports (D36)")) -> None:
+    from trader.live import accounts
+
+    if account not in accounts.NAMES:
+        log(f"unknown account {account!r}; expected one of {list(accounts.NAMES)}")
+        raise typer.Exit(2)
+    accounts.use(account, log=log)
+
+
 def _broker():
+    from trader.live import accounts
     from trader.risk.broker import AlpacaBroker
 
-    b = AlpacaBroker()
-    if not b.paper and settings().live_mode != "live":
-        log("REFUSED: trade keys point at a LIVE account but settings.toml [live] mode is not 'live'")
-        raise typer.Exit(2)
+    name = accounts.current
+    b = AlpacaBroker(name, accounts.config(name)["key_prefix"])
+    if name == "live":
+        ok, why = b.cash_account_ok()
+        if not ok:
+            from trader.monitor.alerts import notify
+
+            notify("critical", f"live account check failed: {why}; nothing sent")
+            log(f"REFUSED: live account check failed: {why}")
+            raise typer.Exit(2)
     return b
 
 
@@ -350,15 +367,19 @@ def live_execute(run_id: str = typer.Option("", help="default: latest pending ru
         con.commit()
         if n:
             log(f"marked {n} older pending target(s) superseded")
+    from trader.live import accounts
+
+    if submit and not accounts.config(accounts.current)["enabled"]:
+        log(f"REFUSED: account {accounts.current} is not enabled in settings.toml [accounts.{accounts.current}]")
+        raise typer.Exit(2)
     allow = set(etf_list()) | set(load_seed()["symbol"].to_list())
     broker = _broker()
-    paper = broker.paper and settings().live_mode == "paper"
-    res = gateway.run(run_id, broker, con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit, paper=paper)
-    log(f"gateway {run_id}: {res.status}, submitted {res.submitted}, refused {len(res.refused)}, deferred {len(res.deferred)}")
+    res = gateway.run(run_id, broker, con, allow, set(etf_list()), limits(), dt.now(UTC), dry_run=not submit, paper=broker.paper)
+    log(f"gateway [{accounts.current}] {run_id}: {res.status}, submitted {res.submitted}, refused {len(res.refused)}, deferred {len(res.deferred)}")
     if submit:
         from trader.monitor.alerts import heartbeat
 
-        heartbeat("gateway", res.status in ("executed", "already_executed", "outside_window"))
+        heartbeat(f"gateway_{accounts.current}", res.status in ("executed", "already_executed", "outside_window"))
     for n in res.notes:
         log(f"  note: {n}")
     for s, why in res.refused:
@@ -378,10 +399,7 @@ def live_gate() -> None:
     """P4 gate status (read-only): clean-day streak and execution tracking error vs the bound."""
     from trader.monitor import daily
 
-    g = daily.gate(daily.read_records())
-    log(f"P4 gate: clean streak {g['clean_streak']}/10; |exec TE| < 10bp on {'n/a' if g['te_days'] == 0 else format(g['te_within_share'], '.0%')} of "
-        f"{g['te_days']} fill days (need 2); mean open-to-execution timing "
-        f"{'n/a' if g['te_days'] == 0 else format(g['mean_timing_bps'], '+.1f') + ' bps'} -> {'PASS' if g['pass'] else 'not yet'}")
+    log(daily.gate_line(daily.gate(daily.read_records())))
 
 
 @gw_app.command("test-alert")
@@ -395,11 +413,15 @@ def live_test_alert() -> None:
 
 
 @gw_app.command("kill")
-def live_kill() -> None:
-    """Kill switch: cancel all open orders and block new ones (creates KILL)."""
+def live_kill(all_accounts: bool = typer.Option(False, "--all", help="every enabled account, live first")) -> None:
+    """Kill switch: cancel all open orders and block new ones (creates live/<account>/KILL)."""
+    from trader.live import accounts
     from trader.risk import gateway, state
 
-    log(f"kill: cancelled {gateway.kill(_broker(), state.connect())} orders; remove with `trader live unkill`")
+    for name in accounts.enabled() if all_accounts else [accounts.current]:
+        accounts.use(name, log=log)
+        log(f"kill [{name}]: cancelled {gateway.kill(_broker(), state.connect())} orders; "
+            f"remove with `trader live --account {name} unkill`")
 
 
 @gw_app.command("unkill")
@@ -474,7 +496,8 @@ def job(name: str = typer.Argument(..., help="forward | gateway")) -> None:
 
 ENV_REQUIRED = ["ALPACA_DATA_KEY", "ALPACA_DATA_SECRET", "ALPACA_TRADE_KEY", "ALPACA_TRADE_SECRET",
                 "ALPACA_TRADE_PAPER", "TRADER_ANTHROPIC_API_KEY", "SEC_USER_AGENT", "FRED_API_KEY"]
-ENV_OPTIONAL = ["MASSIVE_API_KEY", "MASSIVE_S3", "NTFY_TOPIC", "NTFY_TOKEN", "HC_FORWARD_URL", "HC_GATEWAY_URL"]
+ENV_OPTIONAL = ["MASSIVE_API_KEY", "MASSIVE_S3", "NTFY_TOPIC", "NTFY_TOKEN", "HC_FORWARD_URL", "HC_GATEWAY_URL",
+                "HC_GATEWAY_PAPER_URL", "ALPACA_LIVE_TRADE_KEY", "ALPACA_LIVE_TRADE_SECRET", "HC_GATEWAY_LIVE_URL"]
 
 
 @app.command("env-check")

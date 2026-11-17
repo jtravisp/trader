@@ -1,4 +1,4 @@
-"""Live state: live/orders.db (SQLite). Targets in, orders/halts/equity marks out."""
+"""Live state: live/<account>/orders.db (SQLite). Targets in, orders/halts/equity marks out."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ from pathlib import Path
 
 from trader.config import ROOT
 
-DB = ROOT / "live" / "orders.db"
-KILL_FILE = ROOT / "KILL"
+# per account (D36): trader.live.accounts.use() points these at live/<account>/; paper is the default
+DB = ROOT / "live" / "paper" / "orders.db"
+KILL_FILE = ROOT / "live" / "paper" / "KILL"
 
 HUMAN_HALTS = {"peak_drawdown", "reconciliation_mismatch", "duplicate_order"}
 

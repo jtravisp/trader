@@ -13,7 +13,9 @@
     the execution price. This is open-to-09:40 drift: zero-mean in research (D30), large on single days.
   * strategy gap = live return - close-to-close return of the target weights (what the backtest
     holds). Large on build-up days (turnover cap, D18).
-- `gate()`: the P4 gate over live/reports/daily.jsonl (latest record per date).
+- `gate()`: the P4 gate over live/<account>/reports/daily.jsonl (latest record per date).
+- Exit fills (D35): fills in names that aren't in the target in force (selling off a retired strategy's
+  holdings). They are reported, but a day with any exit fill doesn't count toward the P4 TE share.
 - Halts, refusals and alerts of the day.
 """
 
@@ -26,7 +28,7 @@ from trader.config import NY, ROOT, settings
 from trader.data.http import alpaca_data
 from trader.risk import state
 
-REPORTS = ROOT / "live" / "reports"
+REPORTS = ROOT / "live" / "paper" / "reports"  # set per account by trader.live.accounts.use()
 
 
 def _bars(symbols: list[str], d: date) -> dict[str, dict]:
@@ -119,6 +121,13 @@ def attribution(qty_end: dict[str, float], fills: list, px: dict[str, dict], cas
     return out
 
 
+def exit_fills(fills: list, target: dict[str, float] | None) -> int | None:
+    """Pure. Fills in names outside the target in force (D35); None when there is no target."""
+    if target is None:
+        return None
+    return sum(1 for o in fills if o.symbol not in target)
+
+
 def gate(records: list[dict], bound_bps: float = 10.0, share: float = 0.90, days: int = 10,
          min_fill_days: int = 2, is_session=None) -> dict:
     """P4 (D30): `days` consecutive clean trading days (latest streak), and |exec TE| < bound on >= share
@@ -126,7 +135,9 @@ def gate(records: list[dict], bound_bps: float = 10.0, share: float = 0.90, days
     execution (live == model by construction), so they count toward the streak but not the TE share.
     Build-up days count: execution error doesn't depend on distance from the target. Only records whose
     model fills at the execution price (`te_ref == "exec"`) count; earlier open-based records don't.
-    Reports for non-sessions (weekends, holidays) are skipped, not counted as unclean."""
+    Reports for non-sessions (weekends, holidays) are skipped, not counted as unclean.
+    D35: a fill day counts toward the TE share only if none of its fills are exit fills (`n_exit_fills`
+    == 0), whatever its result. Records without the field (before D35) don't count toward the share."""
     if is_session is None:
         from trader.calendar import is_session
     by = {r["date"]: r for r in records if is_session(date.fromisoformat(r["date"]))}  # latest per date wins
@@ -135,11 +146,12 @@ def gate(records: list[dict], bound_bps: float = 10.0, share: float = 0.90, days
         r = by[k]
         clean = not r.get("halts") and not r.get("errors") and r.get("exec_te_bps") is not None
         streak = [*streak, r] if clean else []
-    fill_days = [r for r in streak if r.get("n_fills") and r.get("te_ref") == "exec"]
+    fill_days = [r for r in streak if r.get("n_fills") and r.get("te_ref") == "exec" and r.get("n_exit_fills") == 0]
+    excluded = sum(1 for r in streak if r.get("n_fills") and r.get("te_ref") == "exec" and r.get("n_exit_fills") != 0)
     te = [abs(r["exec_te_bps"]) for r in fill_days]
     within = sum(x < bound_bps for x in te) / len(te) if te else float("nan")
     timing = [r["timing_bps"] for r in fill_days if r.get("timing_bps") is not None]
-    return {"clean_streak": len(streak), "te_days": len(te), "te_within_share": within,
+    return {"clean_streak": len(streak), "te_days": len(te), "te_within_share": within, "excluded_fill_days": excluded,
             "mean_timing_bps": sum(timing) / len(timing) if timing else float("nan"),
             "pass": len(streak) >= days and len(te) >= min_fill_days and within >= share}
 
@@ -174,6 +186,7 @@ def build(d: date, broker, log=print) -> str:
     att = attribution({p.symbol: p.qty for p in pos.values()}, fills, px, acct.cash, acct.last_equity, target,
                       set(etf_list()), s0.etf_bps, s0.stock_bps, exec_px)
     replay = att.get("replay_ret")
+    n_exit = exit_fills(fills, target)
 
     slip = []
     s = s0
@@ -202,6 +215,9 @@ def build(d: date, broker, log=print) -> str:
         bu = att.get("build_up")
         L.append(f"Target `{run[0]}` close-to-close {replay:+.2%}; strategy gap {att['strategy_gap_bps']:+.1f} bps"
                  + (f" (build-up day: start weights {att['start_l1_vs_target']:.0%} L1 from target, excluded from the gate)" if bu else ""))
+    if n_exit:
+        L.append(f"Exit fills: {n_exit} of {len(fills)} fills are in names outside the target (selling a retired "
+                 "strategy's holdings): this day doesn't count toward the P4 TE share (D35)  ")
     if att.get("missing_prices"):
         L.append(f"No bars for {', '.join(att['missing_prices'])}: attribution skipped")
     L += ["", "## Fills vs execution price and session open", "",
@@ -225,7 +241,7 @@ def build(d: date, broker, log=print) -> str:
     rec = {"date": d.isoformat(), "equity": acct.equity, "day_ret": day_ret, "spy_ret": spy_ret, "replay_ret": replay,
            "live_ret": att.get("live_ret"), "model_ret": att.get("model_ret"), "exec_te_bps": att.get("exec_te_bps"),
            "strategy_gap_bps": att.get("strategy_gap_bps"), "build_up": att.get("build_up"), "run_id": run[0] if run else None,
-           "n_fills": len(fills), "mean_slip_bps": (sum(x[5] for x in slip) / len(slip)) if slip else None,
+           "n_fills": len(fills), "n_exit_fills": n_exit, "mean_slip_bps": (sum(x[5] for x in slip) / len(slip)) if slip else None,
            "mean_exec_slip_bps": (sum(eslip) / len(eslip)) if eslip else None,
            "timing_bps": att.get("timing_bps"), "te_ref": "exec" if "exec_te_bps" in att else None,
            "halts": [h["kind"] for h in halts],
@@ -238,6 +254,13 @@ def build(d: date, broker, log=print) -> str:
     send(f"trader daily {d}", f"Equity ${acct.equity:,.2f} ({day_ret:+.2%}) vs SPY {spy_ret:+.2%}{te}; "
          f"{len(fills)} fills; halts: {', '.join(h['kind'] for h in halts) or 'none'}", "2")
     g = gate(read_records())
-    log(f"report: {path}; P4 gate: clean streak {g['clean_streak']}/10, |exec TE| < 10bp on "
-        f"{'n/a' if g['te_days'] == 0 else format(g['te_within_share'], '.0%')} of {g['te_days']} fill days (need 2) -> {'PASS' if g['pass'] else 'not yet'}")
+    log(f"report: {path}; {gate_line(g)}")
     return str(path)
+
+
+def gate_line(g: dict) -> str:
+    share = "n/a" if g["te_days"] == 0 else format(g["te_within_share"], ".0%")
+    timing = "n/a" if g["te_days"] == 0 else format(g["mean_timing_bps"], "+.1f") + " bps"
+    return (f"P4 gate: clean streak {g['clean_streak']}/10; |exec TE| < 10bp on {share} of {g['te_days']} fill days "
+            f"(need 2; {g.get('excluded_fill_days', 0)} exit-fill days excluded, D35); mean open-to-execution timing "
+            f"{timing} -> {'PASS' if g['pass'] else 'not yet'}")
