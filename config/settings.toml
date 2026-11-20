@@ -8,8 +8,8 @@ holdout_start = "2025-11-01"
 holdout_end = "2026-11-01"
 
 [costs]
-stock_bps_per_side = 5
-etf_bps_per_side = 2
+stock_bps_per_side = 15   # D37 (2026-11-20): was 5; paper stock fills averaged +14 bps vs the submit-minute price
+etf_bps_per_side = 2      # D37: kept; paper SPY fills averaged -2 bps
 stress_multiplier = 2
 
 [llm]
@@ -43,3 +43,21 @@ key_prefix = "ALPACA_TRADE"        # ALPACA_TRADE_KEY / _SECRET (paper keys)
 enabled = false                    # true only after the user approves going live (PLAN.md P9, D34)
 key_prefix = "ALPACA_LIVE_TRADE"   # ALPACA_LIVE_TRADE_KEY / _SECRET (cash account, this host only)
 strategy = "FALLBACK"              # stays SPY until a strategy passes a forward holdout + P8
+
+# D38: shadow forward tests (docs/STRATEGIES.md). No orders. At most 3 candidates; each is read once at
+# read_sessions forward sessions. Adding or changing a candidate is a declaration: STRATEGIES.md first.
+[shadow]
+read_sessions = 126
+
+[[shadow.candidates]]
+name = "S14-sma100-daily"
+strategy = "S14"
+params = { sma = 100, rebalance = "daily" }
+start = "2026-11-20"
+in_sample = { sharpe = 1.08, sharpe_2x = 1.06, max_dd = -0.165, cagr = 0.122 }   # 20261120-162758-d32b75
+
+[[shadow.candidates]]
+name = "S16-news-k20"
+strategy = "S16"
+params = { k = 20, min_docs = 2 }
+start = "2026-11-20"

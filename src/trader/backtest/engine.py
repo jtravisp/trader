@@ -42,6 +42,10 @@ class Constraints:
     max_weight_etf: float
     max_gross: float
     min_drift: float
+    # D19: the benchmark (SPY) may be held up to its own cap, as in the gateway. Missing before 2026-11-20 (D38):
+    # the engine capped SPY at the 35% ETF limit while the gateway allowed 100%.
+    benchmark: str | None = None
+    max_weight_benchmark: float | None = None
 
     @classmethod
     def from_limits(cls) -> Constraints:
@@ -51,6 +55,8 @@ class Constraints:
             lim["position"]["max_weight_per_etf"],
             lim["account"]["max_gross_exposure"],
             lim["orders"]["min_rebalance_drift"],
+            lim["position"].get("benchmark_symbol"),
+            lim["position"].get("max_weight_benchmark"),
         )
 
     @classmethod
@@ -72,9 +78,17 @@ class Result:
     name_pnl: np.ndarray | None = None  # N: sum of daily gross contributions (weight x return), by name
 
 
-def apply_constraints(w: np.ndarray, is_etf: np.ndarray, c: Constraints) -> tuple[np.ndarray, bool]:
+def caps(is_etf: np.ndarray, c: Constraints, symbols: list[str] | None = None) -> np.ndarray:
+    """Per-name weight caps: stock / ETF limits, and the benchmark's own cap (D19) when it is in the panel."""
+    cap = np.where(is_etf, c.max_weight_etf, c.max_weight_stock).astype(float)
+    if symbols is not None and c.benchmark in symbols and c.max_weight_benchmark is not None:
+        cap[symbols.index(c.benchmark)] = c.max_weight_benchmark
+    return cap
+
+
+def apply_constraints(w: np.ndarray, is_etf: np.ndarray, c: Constraints, cap: np.ndarray | None = None) -> tuple[np.ndarray, bool]:
     w = np.where(np.isfinite(w), np.maximum(w, 0.0), 0.0)  # long only
-    cap = np.where(is_etf, c.max_weight_etf, c.max_weight_stock)
+    cap = caps(is_etf, c) if cap is None else cap
     clipped = bool((w > cap + 1e-12).any())
     w = np.minimum(w, cap)
     g = w.sum()
@@ -95,6 +109,7 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
     assert targets.shape == (T, N)
     o, c = panel.open, panel.close
     side = costs.per_side(panel.is_etf)
+    cap = caps(panel.is_etf, cons, list(panel.symbols))
     decided = ~np.all(np.isnan(targets), axis=1)
 
     w = np.zeros(N)
@@ -131,7 +146,7 @@ def run(panel: Panel, targets: np.ndarray, costs: CostModel, cons: Constraints, 
         # trade at the open of d if a target was decided at close d-1-delay
         src = d - 1 - delay
         if src >= 0 and decided[src]:
-            tgt, clipped = apply_constraints(targets[src], panel.is_etf, cons)
+            tgt, clipped = apply_constraints(targets[src], panel.is_etf, cons, cap)
             clipped_days += clipped
             # No open print today: a halted name can't be traded (keep it); a name gone since
             # yesterday too is written off flat at its last close.

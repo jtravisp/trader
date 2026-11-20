@@ -62,13 +62,16 @@ def run_one(strategy_id: str, params: dict, cost_mult: float = 1.0, delay: int =
     tg = strat.targets(p)
     cons = engine.Constraints.from_limits() if constraints == "limits" else engine.Constraints.none()
     stop = getattr(strat, "stop_loss", None)
-    res = engine.run(p, tg, engine.CostModel.from_settings(cost_mult), cons, delay=delay,
+    cm = engine.CostModel.from_settings(cost_mult)
+    res = engine.run(p, tg, cm, cons, delay=delay,
                      stop=stop, low=p.fields.get("low") if stop is not None else None)
     # evaluate from the first day the strategy is invested (warm-up excluded), same window for SPY
     start = int(np.argmax(res.exposure > 0)) if (res.exposure > 0).any() else 0
     sl = slice(start, None)
     summ = metrics.summary(res.net[sl], res.gross[sl], res.turnover[sl], p.dates[sl], spy_returns(p)[sl])
     summ["clipped_days"], summ["stale_exits"] = res.clipped_days, res.stale_exits
+    # the base cost level changed in D37 (stocks 5 -> 15 bps/side): every trial records what it paid
+    summ["cost_bps_stock"], summ["cost_bps_etf"] = cm.stock_bps * cm.multiplier, cm.etf_bps * cm.multiplier
     status = "ok" if leak[0] else "leak_detected"
     tid = registry.record(
         family=family or strat.family, strategy_id=strategy_id,
@@ -157,7 +160,8 @@ def write_report(strategy_id: str, params: dict, base: Trial, x2: Trial, dly: Tr
     ]
     L = [f"# {strategy_id} {json.dumps(params, sort_keys=True)}", "",
          f"Trials: base `{base.trial_id}`, 2x `{x2.trial_id}`, delay+1 `{dly.trial_id}`  ",
-         f"Window: {p.dates[start]} .. {p.dates[-1]} (pre-holdout). Leak check: {leak[1]}", "",
+         f"Window: {p.dates[start]} .. {p.dates[-1]} (pre-holdout). Leak check: {leak[1]}  ",
+         f"Costs per side (base): stocks {base.summary['cost_bps_stock']:g} bps, ETFs {base.summary['cost_bps_etf']:g} bps (D37)", "",
          "| metric | base costs | 2x costs | delay +1 day | SPY same window |", "|---|---|---|---|---|"]
     for name, k, f in rows:
         cells = [f.format(t.summary[k]) if k in t.summary else "" for t in (base, x2, dly)]

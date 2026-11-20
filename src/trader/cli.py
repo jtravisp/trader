@@ -276,6 +276,26 @@ def sanity(seeds: int = 100, only: str = typer.Option("", help="san01|san02|san0
     raise typer.Exit(0 if ok else 1)
 
 
+sh_app = typer.Typer(no_args_is_help=True, help="Shadow forward tests of candidates (D38): no orders, no broker.")
+app.add_typer(sh_app, name="shadow")
+
+
+@sh_app.command("record")
+def shadow_record() -> None:
+    """Evening: append each started candidate's decision for the last closed session (append-only)."""
+    from trader.live import shadow
+
+    shadow.record(log=log)
+
+
+@sh_app.command("report")
+def shadow_report(force: bool = typer.Option(False, help="show performance before the read (logged as a forced look)")) -> None:
+    """Data health per candidate; performance only at the read (126 forward sessions) or with --force."""
+    from trader.live import shadow
+
+    shadow.report(force=force, log=log)
+
+
 gw_app = typer.Typer(no_args_is_help=True, help="Live runner and risk gateway, per account: trader live --account paper|live <cmd>.")
 app.add_typer(gw_app, name="live")
 
@@ -398,6 +418,26 @@ def live_report(day: str = typer.Option(None, help="New York date; default today
     from trader.monitor import daily
 
     daily.build(_d(day) or datetime.now(NY).date(), _broker(), log=log)
+
+
+@gw_app.command("compare")
+def live_compare(day: str = typer.Option(None, help="New York date; default today")) -> None:
+    """Read-only: live vs paper vs SPY from each account's daily record (LIVE_PAPER.md part 3)."""
+    from trader.monitor import compare
+
+    compare.run(_d(day) or datetime.now(NY).date(), log=log)
+
+
+@gw_app.command("costs")
+def live_costs(since: str = typer.Option("2026-11-04", help="first New York date of fills to include")) -> None:
+    """Read-only: slippage of every fill vs the submit-minute price, by asset class and side (D37)."""
+    from trader.live import accounts
+    from trader.monitor import costs, daily
+
+    summ = costs.report(_broker(), _d(since), daily.REPORTS / "costs.md", log=log)
+    for k, v in summ.items():
+        log(f"  [{accounts.current}] {k}: {v['n']} fills / {v['days']} days, mean {v['mean']:+.1f} bps "
+            f"(s.e. {v['se']:.1f}), median {v['median']:+.1f}, notional-weighted {v['wmean']:+.1f}")
 
 
 @gw_app.command("gate")

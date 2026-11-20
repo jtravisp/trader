@@ -35,8 +35,10 @@ def steps(name: str, accounts: list[str] | None = None) -> list[list[str]]:
 
         accounts = enabled()
     if name == "forward":
-        return [*JOBS["forward"], *[s for a in accounts for s in (["live", "--account", a, "report"],
-                                                                  ["live", "--account", a, "target"])]]
+        # shadow record (D38) right after the data, before any account step; it never touches an account
+        return [*JOBS["forward"], ["shadow", "record"], *[s for a in accounts for s in (["live", "--account", a, "report"],
+                                                                  ["live", "--account", a, "target"])],
+                ["live", "compare"]]  # LIVE_PAPER.md part 3: reads every account's record
     return [["live", "--account", a, "execute", "--submit"] for a in accounts]
 
 
