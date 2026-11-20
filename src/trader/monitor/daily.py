@@ -188,6 +188,35 @@ def build(d: date, broker, log=print) -> str:
     replay = att.get("replay_ret")
     n_exit = exit_fills(fills, target)
 
+    # live-only checks (LIVE_PAPER.md part 4; run for paper too, as the control)
+    from trader.monitor import checks
+    from trader.monitor.alerts import notify
+
+    qty_end = {p.symbol: p.qty for p in pos.values()}
+    mark = acct.cash + sum(q * px[k]["close"] for k, q in qty_end.items() if k in px) if all(k in px for k in qty_end) else None
+    prior = [r for r in read_records() if r["date"] < d.isoformat()]
+    gap = checks.mark_gap(max(prior, key=lambda r: r["date"]) if prior else None, acct.last_equity)
+    since_ev = datetime.combine(d, time(0), NY).astimezone(UTC).isoformat()
+    bp_def = sum(1 for (det,) in con.execute("SELECT detail FROM events WHERE kind='order_deferred' AND ts >= ?", (since_ev,))
+                 if "buying power" in det)
+    settle = checks.settlement_streak([*prior, {"date": d.isoformat(), "bp_deferrals": bp_def}])
+    wdiff = None
+    if target is not None and mark:
+        tgt = {k: float(v) for k, v in target.items() if k != "$CASH"}
+        w_end = {k: q * px[k]["close"] / mark for k, q in qty_end.items() if k in px}
+        wdiff = max((abs(w_end.get(k, 0.0) - tgt.get(k, 0.0)) for k in {*w_end, *tgt}), default=0.0)
+    check_notes = []
+    if gap is not None and abs(gap) > checks.MARK_GAP_USD:
+        check_notes.append(f"equity mark: Alpaca's previous-close equity differs from our mark by ${gap:+.2f} "
+                           f"(> ${checks.MARK_GAP_USD:.2f}): fees, a corporate action or an unseen fill")
+    if settle >= checks.SETTLEMENT_STREAK:
+        check_notes.append(f"unsettled cash: buys waited for buying power {settle} sessions in a row")
+    for msg in check_notes:
+        notify("warning", msg)
+    ledger = REPORTS.parent / "fills.jsonl"
+    n_new = checks.append_fills(ledger, fills)
+    n_tax = checks.write_tax_csv(ledger, REPORTS.parent / "fills_tax.csv")
+
     slip = []
     s = s0
     for o in fills:
@@ -220,6 +249,13 @@ def build(d: date, broker, log=print) -> str:
                  "strategy's holdings): this day doesn't count toward the P4 TE share (D35)  ")
     if att.get("missing_prices"):
         L.append(f"No bars for {', '.join(att['missing_prices'])}: attribution skipped")
+    L += ["", "## Checks", "",
+          f"- Equity mark vs Alpaca's previous close: {'n/a (no previous mark)' if gap is None else format(gap, '+.2f') + ' USD'}"
+          f" (warn above ${checks.MARK_GAP_USD:.2f})",
+          f"- Buying-power deferrals today: {bp_def}; streak {settle} (warn at {checks.SETTLEMENT_STREAK})",
+          f"- Largest weight difference vs target: {'n/a' if wdiff is None else format(wdiff, '.1%')}",
+          f"- Tax fill log: {n_new} new fills, {n_tax} rows in fills_tax.csv"]
+    L += [f"- **WARNING** {m}" for m in check_notes]
     L += ["", "## Fills vs execution price and session open", "",
           "| symbol | side | qty | fill | exec ref | slippage bps | open | vs open bps |", "|---|---|---|---|---|---|---|---|"]
     L += [f"| {a} | {b} | {c:.4f} | {e:.2f} | {'n/a' if r is None else format(r, '.2f')} | "
@@ -244,15 +280,18 @@ def build(d: date, broker, log=print) -> str:
            "n_fills": len(fills), "n_exit_fills": n_exit, "mean_slip_bps": (sum(x[5] for x in slip) / len(slip)) if slip else None,
            "mean_exec_slip_bps": (sum(eslip) / len(eslip)) if eslip else None,
            "timing_bps": att.get("timing_bps"), "te_ref": "exec" if "exec_te_bps" in att else None,
+           "mark_equity": mark, "mark_gap": gap, "bp_deferrals": bp_def, "max_weight_diff": wdiff,
            "halts": [h["kind"] for h in halts],
            "errors": [k for _, lvl, k, _ in events if lvl in ("error", "critical")]}
     with (REPORTS / "daily.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
+    from trader.live.accounts import enabled
     from trader.monitor.alerts import send
 
     te = f", exec TE {att['exec_te_bps']:+.0f}bp" if "exec_te_bps" in att else ""
-    send(f"trader daily {d}", f"Equity ${acct.equity:,.2f} ({day_ret:+.2%}) vs SPY {spy_ret:+.2%}{te}; "
-         f"{len(fills)} fills; halts: {', '.join(h['kind'] for h in halts) or 'none'}", "2")
+    if len(enabled()) == 1:  # with both accounts, `live compare` sends one combined summary (LIVE_PAPER.md part 3)
+        send(f"trader daily {d}", f"Equity ${acct.equity:,.2f} ({day_ret:+.2%}) vs SPY {spy_ret:+.2%}{te}; "
+             f"{len(fills)} fills; halts: {', '.join(h['kind'] for h in halts) or 'none'}", "2")
     g = gate(read_records())
     log(f"report: {path}; {gate_line(g)}")
     return str(path)

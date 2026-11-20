@@ -172,12 +172,16 @@ The best passing baseline goes to paper trading as soon as P4 is ready. That sta
 
 **Gate:** a statistically positive incremental lift on post-cutoff data. If the lift isn't there, the LLM is dropped from the signal path, and that's fine.
 
+**Status (2026-11-20, D38):** S05 failed P3, so (a) has no base model. Stage 2 is now S16, a weekly tilt into the 20 names with the most positive scores on an SPY core, shadow-tested from 2026-11-20 and read at 126 forward sessions together with the stage 1 IC (STRATEGIES.md). (b) waits for a strategy that holds stocks.
+
 ## P7 — Holdout test and selection (week ~10)
 - Freeze the code version. Run the chosen candidate(s), at most 3, **once** on the holdout year.
 - Pass if the holdout Sharpe is > 0.5, is ≥ 50% of the in-sample Sharpe, and the max drawdown is within 1.5× the in-sample max drawdown.
 - If it fails, do **not** tweak and rerun the holdout. Go back to research. The holdout is then spent: the next holdout becomes forward paper data.
 
 **Status (2026-11-13): run once; S03 FAILED (D31, D33).** Holdout Sharpe 0.11 vs SPY 0.96, CAGR −9.7%, max DD −40.8%. S13 (faster S03) was tested first and did not qualify. Paper is back on FALLBACK (SPY); the holdout is spent.
+
+**After P7 (2026-11-20, D38):** research restarted on SPY overlays (S14 trend filter passes P3; S15 vol management fails on PBO). Candidates are forward-tested in **shadow** (`trader shadow record` in the evening job; no orders), because the paper account mirrors live. Each is read once at 126 forward sessions with the P7 criteria; a pass goes to P8. Base stock costs are 15 bps per side since D37.
 
 ## P8 — Paper trading the final candidate (≥ 3 months)
 - Use the full live stack. The daily review runs every trading day, and a weekly summary compares results against the backtest's expected distribution.

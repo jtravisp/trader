@@ -86,7 +86,8 @@ def test_jobs_expand_per_account_live_first():
     assert jobs.steps("gateway", ["live", "paper"]) == [["live", "--account", "live", "execute", "--submit"],
                                                        ["live", "--account", "paper", "execute", "--submit"]]
     f = jobs.steps("forward", ["paper"])
-    assert f == [["forward"], ["live", "--account", "paper", "report"], ["live", "--account", "paper", "target"]]
+    assert f == [["forward"], ["shadow", "record"], ["live", "--account", "paper", "report"], ["live", "--account", "paper", "target"],
+                 ["live", "compare"]]
     assert accounts.enabled() == ["paper"]  # settings.toml: live stays off until the user approves (D34)
 
 

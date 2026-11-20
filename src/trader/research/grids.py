@@ -22,6 +22,9 @@ GRIDS: dict[str, dict[str, list]] = {
     "S12": {"lookback": [126, 252], "hold": [1, 5, 20]},
     "S04": {"threshold": [1.0, 2.0], "hold": [5, 20]},
     "S05": {"features": ["price", "price+fund", "all"], "num_leaves": [15, 63], "n_estimators": [300, 800]},
+    # declared 2026-11-20 (D38), before any run; base costs per D37
+    "S14": {"sma": [100, 200], "rebalance": ["daily", "weekly", "monthly"]},
+    "S15": {"vol_target": [0.12, 0.16], "window": [21, 63], "rebalance": ["daily", "weekly", "monthly"]},
 }
 
 

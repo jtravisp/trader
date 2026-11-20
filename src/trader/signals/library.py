@@ -151,6 +151,8 @@ class EarningsDrift(Strategy):
 
 
 from trader.signals.ml import LgbmRanker  # noqa: E402
+from trader.signals.news import NewsTilt  # noqa: E402
+from trader.signals.spy import SpyTrend, SpyVolManaged  # noqa: E402
 
 REGISTRY: dict[str, type[Strategy]] = {
     "S04": EarningsDrift,
@@ -162,4 +164,7 @@ REGISTRY: dict[str, type[Strategy]] = {
     "SAN02-EW": EqualWeightUniverse,
     "SAN03": LeakyNextDay,
     "S03": Momentum,
+    "S14": SpyTrend,
+    "S15": SpyVolManaged,
+    "S16": NewsTilt,
 }

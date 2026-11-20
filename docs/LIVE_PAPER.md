@@ -1,6 +1,6 @@
 # Running live and paper side by side
 
-Plan for P9 (D34). Live starts with $200 on FALLBACK (100% SPY). Paper keeps running on its own account, first on FALLBACK, later on whatever candidate is under forward test. **Status (2026-11-17, D36):** parts 1 (accounts and state), 2 (jobs, heartbeats) and the alert tags of part 4 are built; the live account check covers cash/no-margin only. Part 3 (`live compare`) and the other live-only checks in part 4 are not built yet. Live orders need the user's explicit approval (PLAN.md P9 step 5).
+Plan for P9 (D34). Live starts with $200 on FALLBACK (100% SPY). Paper keeps running on its own account, first on FALLBACK, later on whatever candidate is under forward test. **Status (2026-11-20):** parts 1–4 are built. Part 3 is `trader live compare` (evening job, after both accounts). Part 4's live-only checks run in every account's daily report, so paper acts as the control: equity mark vs Alpaca's previous-close equity, the buying-power deferral streak, and the tax fill log (`live/<account>/fills.jsonl` → `fills_tax.csv`, FIFO lots, realized gain, possible-wash-sale flag). With one account enabled, the daily report still sends its own push; with two, `compare` sends one combined line. Live orders need the user's explicit approval (PLAN.md P9 step 5).
 
 ## Goals
 1. **Isolation:** a problem in one account can never trade, halt or reconcile the other.
