@@ -1,10 +1,13 @@
 """LIVE_PAPER.md parts 3-4: live-only checks, the tax fill log and the live/paper/SPY comparison (pure parts)."""
 
 from dataclasses import dataclass
+from datetime import date
 
 import pytest
 
-from trader.monitor import checks, compare
+from trader.monitor import checks, compare, daily
+
+WEEKDAYS = lambda d: d.weekday() < 5  # noqa: E731
 
 
 def test_settlement_streak_counts_latest_consecutive_days():
@@ -69,18 +72,46 @@ def test_append_fills_is_idempotent(tmp_path):
 
 
 def _rec(d, day, spy, fills=0, te=None, exits=0, **kw):
-    return {"date": d, "equity": 200.0, "day_ret": day, "spy_ret": spy, "n_fills": fills, "exec_te_bps": te,
-            "n_exit_fills": exits, "te_ref": "exec", "halts": [], "errors": [], **kw}
+    return {"date": d, "equity": 200.0, "day_ret": day, "live_ret": day, "spy_ret": spy, "n_fills": fills,
+            "exec_te_bps": te, "n_exit_fills": exits, "te_ref": "exec", "halts": [], "errors": [], **kw}
 
 
 def test_account_view_chains_returns_and_rolls_te():
     recs = [_rec("2026-11-30", 0.01, 0.01), _rec("2026-12-01", 0.02, 0.01, 1, 3.0), _rec("2026-12-02", -0.01, -0.01, 1, 12.0),
             _rec("2026-12-02", -0.01, -0.01, 1, 4.0)]  # re-run of 12-02: latest record wins
-    v = compare.account_view(recs, "2026-12-02")
+    v = compare.account_view(recs, "2026-12-02", is_session=WEEKDAYS)
     assert v["mtd"] == pytest.approx(1.02 * 0.99 - 1) and v["since"] == pytest.approx(1.01 * 1.02 * 0.99 - 1)
     assert v["te_fill_days"] == 2 and v["te_within_share"] == 1.0 and v["exec_te_bps"] == 4.0
-    assert compare.account_view(recs, "2026-12-03") is None
-    assert compare.account_view(recs, "2026-12-02", start="2026-12-01")["since"] == pytest.approx(1.02 * 0.99 - 1)
+    assert compare.account_view(recs, "2026-12-03", is_session=WEEKDAYS) is None
+    assert compare.account_view(recs, "2026-12-02", start="2026-12-01", is_session=WEEKDAYS)["since"] == pytest.approx(1.02 * 0.99 - 1)
+
+
+def test_account_view_uses_close_marks_and_skips_non_sessions():
+    # 11/20 as it happened: Alpaca's evening equity (after-hours) said -2.64%, the close mark -3.64%; the
+    # weekend records the old evening job wrote (day_ret ~0, no close mark, SPY NaN) must not count
+    recs = [_rec("2026-11-19", -0.02, -0.02), {**_rec("2026-11-20", -0.0264, -0.0364), "live_ret": -0.0364},
+            _rec("2026-11-21", 0.0, float("nan"), live_ret=None), _rec("2026-11-23", 0.01, 0.01)]
+    v = compare.account_view(recs, "2026-11-23", is_session=WEEKDAYS)
+    assert v["since"] == pytest.approx(0.98 * (1 - 0.0364) * 1.01 - 1) == pytest.approx(v["spy_since"])
+    assert compare.account_view(recs, "2026-11-21", is_session=WEEKDAYS) is None
+    assert compare.account_view(recs, "2026-11-20", is_session=WEEKDAYS)["day"] == -0.0364
+
+
+def test_compare_skips_day_gap_without_both_returns():
+    out = compare.compare({"live": {"day": None, "exec_te_bps": None, "te_within_share": None, "te_fill_days": 0,
+                                    "since": 0.0, "spy_since": 0.0, "start": "2026-12-01", "halts": []},
+                           "paper": {"day": 0.01}}, same_strategy=True, fallback=True)
+    assert "gap_day_bps" not in out and out["warnings"] == []
+
+
+def test_report_and_compare_skip_non_sessions(monkeypatch):
+    import trader.calendar as cal
+
+    monkeypatch.setattr(cal, "is_session", lambda d: False)
+    logs: list[str] = []
+    assert daily.build(date(2026, 11, 21), broker=None, log=logs.append) == ""  # returns before touching the broker
+    assert compare.run(date(2026, 11, 21), log=logs.append) == ""
+    assert len(logs) == 2 and all("not a trading session" in m for m in logs)
 
 
 def test_compare_warnings():
@@ -108,6 +139,6 @@ def test_summary_line():
 def test_account_view_skips_nan_days_and_old_te_records():
     recs = [_rec("2026-12-01", 0.01, float("nan")), _rec("2026-12-02", 0.01, 0.02, 1, 30.0, te_ref=None),
             _rec("2026-12-03", 0.0, 0.0, 1, 30.0, exits=3), {**_rec("2026-12-04", 0.0, 0.0, 1, 2.0), "n_exit_fills": None}]
-    v = compare.account_view(recs, "2026-12-04")
+    v = compare.account_view(recs, "2026-12-04", is_session=WEEKDAYS)
     assert v["spy_mtd"] == pytest.approx(0.02)
     assert v["te_fill_days"] == 0 and v["te_within_share"] is None  # open-based, exit-fill and pre-D35 days don't count

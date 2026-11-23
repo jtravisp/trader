@@ -8,6 +8,10 @@ Three numbers to watch:
 2. Live minus paper, while both run the same strategy: a daily gap over 15 bps, or a cumulative gap over 1%,
    is a warning (a fill, settlement or sizing difference).
 3. Live vs SPY on FALLBACK: the cumulative shortfall is the cash drag; over 2% is a warning.
+
+Returns are each record's `live_ret` (marked at official closes, like `spy_ret`), not `day_ret`: before
+2026-11-23 `day_ret` was Alpaca's evening equity, which includes after-hours prices that chaining never
+reverses. Only trading sessions count; on weekends and holidays `run` writes nothing.
 """
 
 from __future__ import annotations
@@ -23,8 +27,11 @@ TE_BOUND_BPS, TE_SHARE, TE_WINDOW = 10.0, 0.90, 20
 GAP_DAY_BPS, GAP_CUM, CASH_DRAG = 15.0, 0.01, 0.02
 
 
-def by_date(records: list[dict]) -> dict[str, dict]:
-    return {r["date"]: r for r in records}  # latest record per date wins
+def by_date(records: list[dict], is_session=None) -> dict[str, dict]:
+    """Latest record per date, trading sessions only (older files hold weekend records)."""
+    if is_session is None:
+        from trader.calendar import is_session
+    return {r["date"]: r for r in records if is_session(date.fromisoformat(r["date"]))}
 
 
 def _cum(rs: list) -> float:
@@ -36,10 +43,11 @@ def _cum(rs: list) -> float:
     return out - 1
 
 
-def account_view(records: list[dict], d: str, start: str | None = None) -> dict | None:
-    """Pure: one account's numbers for day d. Returns are chained from the daily records (deposits don't
-    distort them). start: first date counted for 'since start' (default: the account's first record)."""
-    rec = by_date(records)
+def account_view(records: list[dict], d: str, start: str | None = None, is_session=None) -> dict | None:
+    """Pure: one account's numbers for day d. Returns are chained from the daily records' close-marked
+    `live_ret` (deposits don't distort them). start: first date counted for 'since start' (default: the
+    account's first record)."""
+    rec = by_date(records, is_session)
     if d not in rec:
         return None
     days = sorted(k for k in rec if k <= d and (start is None or k >= start))
@@ -50,10 +58,10 @@ def account_view(records: list[dict], d: str, start: str | None = None) -> dict 
                  and rec[k].get("te_ref") == "exec" and rec[k].get("n_exit_fills") == 0][-TE_WINDOW:]
     within = [abs(x["exec_te_bps"]) < TE_BOUND_BPS for x in fill_days]
     return {
-        "equity": r.get("equity"), "day": r.get("day_ret"), "spy_day": r.get("spy_ret"),
-        "mtd": _cum([rec[k].get("day_ret") for k in month]),
+        "equity": r.get("mark_equity") or r.get("equity"), "day": r.get("live_ret"), "spy_day": r.get("spy_ret"),
+        "mtd": _cum([rec[k].get("live_ret") for k in month]),
         "spy_mtd": _cum([rec[k].get("spy_ret") for k in month]),
-        "since": _cum([rec[k].get("day_ret") for k in days]),
+        "since": _cum([rec[k].get("live_ret") for k in days]),
         "spy_since": _cum([rec[k].get("spy_ret") for k in days]),
         "start": days[0] if days else d,
         "exec_te_bps": r.get("exec_te_bps") if r.get("n_fills") else None,
@@ -80,8 +88,8 @@ def compare(views: dict[str, dict | None], same_strategy: bool, fallback: bool) 
             out["cash_drag"] = drag
             if drag > CASH_DRAG:
                 warn.append(("warning", f"live trails SPY by {drag:.2%} since {lv['start']} on FALLBACK (cash drag bound {CASH_DRAG:.0%})"))
-    if lv and pv and same_strategy:
-        day_gap = ((lv["day"] or 0.0) - (pv["day"] or 0.0)) * 1e4
+    if lv and pv and same_strategy and lv.get("day") is not None and pv.get("day") is not None:
+        day_gap = (lv["day"] - pv["day"]) * 1e4
         out["gap_day_bps"] = day_gap
         if abs(day_gap) > GAP_DAY_BPS:
             warn.append(("warning", f"live minus paper {day_gap:+.1f} bps today (bound {GAP_DAY_BPS:g})"))
@@ -100,10 +108,14 @@ def summary_line(views: dict[str, dict | None], cmp: dict) -> str:
 
 
 def run(d: date, log=print) -> str:
+    from trader.calendar import is_session
     from trader.live import accounts
     from trader.monitor import alerts
 
     ds = d.isoformat()
+    if not is_session(d):
+        log(f"compare: {ds} is not a trading session; nothing to compare")
+        return ""
     names = accounts.enabled()
     views: dict[str, dict | None] = {}
     starts = {}

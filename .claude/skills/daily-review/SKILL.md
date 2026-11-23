@@ -17,7 +17,7 @@ description: Review the trading system's daily run (paper or live). Checks fills
 - **Reconciliation:** broker positions = expected positions after fills. Any mismatch is **critical**.
 - **Orders:** count vs limits, rejected orders, partial fills, duplicate `client_order_id`s.
 - **Slippage:** realized fill price vs the decision-time quote, in bps, compared with the cost model (D37: stocks 15, ETFs 2 bps per side). Flag any fill worse than 3× the model. `trader live --account <name> costs` recalibrates from all fills.
-- **P&L:** today's and month-to-date P&L vs SPY, and vs the backtest replay of the same day (tracking error).
+- **P&L:** today's and month-to-date P&L vs SPY, and vs the backtest replay of the same day (tracking error). Day returns are marked at official closes; the report also shows Alpaca's evening equity, which uses after-hours prices and is not used. Weekends and holidays get no report or comparison (since 2026-11-23); older files still hold weekend records, which the gate and the comparison skip.
 - **Risk:** current drawdown from peak vs the halt thresholds. Any gateway refusals.
 - **LLM scorer:** items scored, invalid-output rate, spend today, any risk-flag vetoes triggered.
 

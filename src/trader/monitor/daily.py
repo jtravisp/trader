@@ -1,6 +1,9 @@
 """Daily live report: live/reports/<date>.md (read-only; the daily-review skill summarizes it).
 
-- Equity and day return vs SPY.
+- Equity and day return vs SPY, both at official closes. Alpaca's equity in the evening prices positions at
+  the latest after-hours trade, and the next day's return starts from the official close, so chaining it
+  never reverses the after-hours move (11/20: -2.64% reported vs -3.64% at the close). It is shown, not used.
+- Only trading sessions get a report: on weekends and holidays the evening job writes nothing.
 - Fills: average fill price vs the session OPEN (the backtest's fill price) -> realized slippage
   in bps, against the modeled cost (D4).
 - Live vs model, split in three (`attribution`, pure):
@@ -163,7 +166,16 @@ def read_records() -> list[dict]:
     return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
+def _pct(x: float | None) -> str:
+    return "n/a" if x is None else format(x, "+.2%")
+
+
 def build(d: date, broker, log=print) -> str:
+    from trader.calendar import is_session, previous_session
+
+    if not is_session(d):
+        log(f"report: {d} is not a trading session; nothing to report")
+        return ""
     con = state.connect()
     acct, pos = broker.account(), broker.positions()
     since = datetime.combine(d, time(0), NY).astimezone(UTC).isoformat()
@@ -172,7 +184,7 @@ def build(d: date, broker, log=print) -> str:
     syms = sorted({"SPY", *pos, *(o.symbol for o in fills)})
     px = _bars(syms, d)
     exec_px = _minute_px(fills, d)
-    day_ret = acct.equity / acct.last_equity - 1 if acct.last_equity else 0.0
+    alpaca_ret = acct.equity / acct.last_equity - 1 if acct.last_equity else None  # includes after-hours prices
     spy = px.get("SPY")
     spy_ret = spy["close"] / spy["prev_close"] - 1 if spy else float("nan")
 
@@ -186,6 +198,7 @@ def build(d: date, broker, log=print) -> str:
     att = attribution({p.symbol: p.qty for p in pos.values()}, fills, px, acct.cash, acct.last_equity, target,
                       set(etf_list()), s0.etf_bps, s0.stock_bps, exec_px)
     replay = att.get("replay_ret")
+    day_ret = att.get("live_ret")  # marked at official closes; None without closing prices for every holding
     n_exit = exit_fills(fills, target)
 
     # live-only checks (LIVE_PAPER.md part 4; run for paper too, as the control)
@@ -194,8 +207,11 @@ def build(d: date, broker, log=print) -> str:
 
     qty_end = {p.symbol: p.qty for p in pos.values()}
     mark = acct.cash + sum(q * px[k]["close"] for k, q in qty_end.items() if k in px) if all(k in px for k in qty_end) else None
-    prior = [r for r in read_records() if r["date"] < d.isoformat()]
-    gap = checks.mark_gap(max(prior, key=lambda r: r["date"]) if prior else None, acct.last_equity)
+    # sessions only (older files hold weekend records); the mark is compared with the previous session's only,
+    # so a missed evening doesn't turn a whole day's P&L into a mark gap
+    prior = [r for r in read_records() if r["date"] < d.isoformat() and is_session(date.fromisoformat(r["date"]))]
+    last = max(prior, key=lambda r: r["date"]) if prior else None
+    gap = checks.mark_gap(last if last and last["date"] == previous_session(d).isoformat() else None, acct.last_equity)
     since_ev = datetime.combine(d, time(0), NY).astimezone(UTC).isoformat()
     bp_def = sum(1 for (det,) in con.execute("SELECT detail FROM events WHERE kind='order_deferred' AND ts >= ?", (since_ev,))
                  if "buying power" in det)
@@ -231,12 +247,14 @@ def build(d: date, broker, log=print) -> str:
     halts = state.active_halts(con, d.isoformat())
 
     L = [f"# Live report {d} ({'paper' if getattr(broker, 'paper', True) else 'LIVE'})", "",
-         f"Equity **${acct.equity:,.2f}** (prev close ${acct.last_equity:,.2f}): day {day_ret:+.2%}; SPY {spy_ret:+.2%}  ",
-         f"Cash ${acct.cash:,.2f}; positions {len(pos)}"]
+         f"Equity at the close **{'n/a' if mark is None else '$' + format(mark, ',.2f')}** (prev close ${acct.last_equity:,.2f}): "
+         f"day {_pct(day_ret)}; SPY {spy_ret:+.2%}  ",
+         f"Cash ${acct.cash:,.2f}; positions {len(pos)}; Alpaca equity now ${acct.equity:,.2f} ({_pct(alpaca_ret)}, "
+         "after-hours prices: not used)"]
     if "exec_te_bps" in att:
-        L.append(f"Marked at official closes: {att['live_ret']:+.2%}; holdings model (fills at the submit-minute price, "
-                 f"modeled costs) {att['model_ret']:+.2%}; **execution error {att['exec_te_bps']:+.1f} bps** "
-                 f"(P4 bound 10{', no fills: not counted' if not fills else ''}); "
+        L.append(f"Holdings model (fills at the submit-minute price, modeled costs) {att['model_ret']:+.2%}; "
+                 f"**execution error {att['exec_te_bps']:+.1f} bps** (day return minus model; "
+                 f"P4 bound 10{', no fills: not counted' if not fills else ''}); "
                  f"open-to-execution timing {att['timing_bps']:+.1f} bps  ")
         if att.get("exec_ref_missing"):
             L.append(f"No minute bar for {', '.join(att['exec_ref_missing'])}: session open used as their execution price  ")
@@ -268,13 +286,18 @@ def build(d: date, broker, log=print) -> str:
         L.append(f"\nMean slippage vs execution price {eavg} bps; vs open {avg:+.1f} bps "
                  f"(modeled cost: {s.etf_bps} bps ETFs / {s.stock_bps} bps stocks per side)")
     L += ["", "## Positions", "", "| symbol | qty | value | weight |", "|---|---|---|---|"]
-    L += [f"| {p.symbol} | {p.qty:.4f} | ${p.market_value:,.2f} | {p.market_value / acct.equity:.1%} |" for p in pos.values()] or ["| none | | | |"]
+
+    def _val(p):  # at the official close when there is a bar, else Alpaca's (after-hours) market value
+        return p.qty * px[p.symbol]["close"] if p.symbol in px else p.market_value
+
+    L += [f"| {p.symbol} | {p.qty:.4f} | ${_val(p):,.2f} | {_val(p) / (mark or acct.equity):.1%} |" for p in pos.values()] or ["| none | | | |"]
     L += ["", "## Halts", ""] + ([f"- **{h['kind']}**: {h['reason']}" for h in halts] or ["none"])
     L += ["", "## Events", ""] + ([f"- {t[11:19]} {lvl} {k}: {det[:160]}" for t, lvl, k, det in events] or ["none"])
     REPORTS.mkdir(parents=True, exist_ok=True)
     path = REPORTS / f"{d}.md"
     path.write_text("\n".join(L) + "\n", encoding="utf-8")
-    rec = {"date": d.isoformat(), "equity": acct.equity, "day_ret": day_ret, "spy_ret": spy_ret, "replay_ret": replay,
+    rec = {"date": d.isoformat(), "equity": acct.equity, "day_ret": day_ret, "alpaca_day_ret": alpaca_ret,
+           "day_ret_basis": "close", "spy_ret": spy_ret, "replay_ret": replay,
            "live_ret": att.get("live_ret"), "model_ret": att.get("model_ret"), "exec_te_bps": att.get("exec_te_bps"),
            "strategy_gap_bps": att.get("strategy_gap_bps"), "build_up": att.get("build_up"), "run_id": run[0] if run else None,
            "n_fills": len(fills), "n_exit_fills": n_exit, "mean_slip_bps": (sum(x[5] for x in slip) / len(slip)) if slip else None,
@@ -290,7 +313,7 @@ def build(d: date, broker, log=print) -> str:
 
     te = f", exec TE {att['exec_te_bps']:+.0f}bp" if "exec_te_bps" in att else ""
     if len(enabled()) == 1:  # with both accounts, `live compare` sends one combined summary (LIVE_PAPER.md part 3)
-        send(f"trader daily {d}", f"Equity ${acct.equity:,.2f} ({day_ret:+.2%}) vs SPY {spy_ret:+.2%}{te}; "
+        send(f"trader daily {d}", f"Equity ${mark or acct.equity:,.2f} ({_pct(day_ret)}) vs SPY {spy_ret:+.2%}{te}; "
              f"{len(fills)} fills; halts: {', '.join(h['kind'] for h in halts) or 'none'}", "2")
     g = gate(read_records())
     log(f"report: {path}; {gate_line(g)}")
